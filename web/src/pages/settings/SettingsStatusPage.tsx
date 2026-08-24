@@ -69,7 +69,7 @@ export default function SettingsStatusPage() {
   return (
     <>
       {message && <div style={styles.ok}>{message}</div>}
-      {error && <div style={styles.error}>{error}</div>}
+      {error && <div style={styles.error} role="alert">{error}</div>}
       <form onSubmit={handleSave} style={styles.card}>
         <h3 style={styles.title}>Public Status Page</h3>
         <p style={styles.desc}>
@@ -98,7 +98,7 @@ export default function SettingsStatusPage() {
         <div style={{ marginTop: 20 }}>
           <div className="field-label" style={{ marginBottom: 12 }}>Monitors to display</div>
           {monitors.length === 0 ? (
-            <p style={{ color: colors.textMuted, fontSize: 14, margin: 0 }}>
+            <p style={{ color: colors.textMuted, fontSize: 15, margin: 0 }}>
               No monitors yet. Add monitors first, then choose which ones appear on the status page.
             </p>
           ) : (
@@ -112,7 +112,7 @@ export default function SettingsStatusPage() {
                   />
                   <span>
                     <span style={{ fontWeight: 500 }}>{m.name}</span>
-                    <span style={{ color: colors.textMuted, marginLeft: 8, fontSize: 12 }}>{m.type}</span>
+                    <span style={{ color: colors.textMuted, marginLeft: 8, fontSize: 13 }}>{m.type}</span>
                   </span>
                 </label>
               ))}
@@ -126,12 +126,12 @@ export default function SettingsStatusPage() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  card: { background: colors.card, border: `1px solid ${colors.border}`, borderRadius: 12, padding: 28, maxWidth: 640 },
+  card: { background: colors.card, border: `1px solid ${colors.border}`, borderRadius: 10, padding: 28, maxWidth: 640 },
   title: { margin: '0 0 8px' },
-  desc: { color: colors.textMuted, fontSize: 14, margin: '0 0 20px' },
-  check: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 14 },
+  desc: { color: colors.textMuted, fontSize: 15, margin: '0 0 20px' },
+  check: { display: 'flex', gap: 8, alignItems: 'center', fontSize: 15 },
   list: { display: 'grid', gap: 8, maxHeight: 280, overflow: 'auto' },
-  item: { display: 'flex', gap: 10, alignItems: 'center', fontSize: 14 },
+  item: { display: 'flex', gap: 10, alignItems: 'center', fontSize: 15 },
   ok: { background: 'rgba(34,197,94,0.15)', color: colors.green, padding: 12, borderRadius: 8, marginBottom: 16 },
   error: { background: colors.redDim, color: colors.red, padding: 12, borderRadius: 8, marginBottom: 16 },
 }

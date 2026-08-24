@@ -51,8 +51,8 @@ export function incidentStatusLabel(incident: Incident): string {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  resolved: { color: colors.green, fontSize: 13, fontWeight: 600 },
-  notice: { color: colors.blue, fontSize: 13, fontWeight: 600 },
-  warning: { color: colors.yellow, fontSize: 13, fontWeight: 600 },
-  critical: { color: colors.red, fontSize: 13, fontWeight: 600 },
+  resolved: { color: colors.green, fontSize: 15, fontWeight: 600 },
+  notice: { color: colors.blue, fontSize: 15, fontWeight: 600 },
+  warning: { color: colors.yellow, fontSize: 15, fontWeight: 600 },
+  critical: { color: colors.red, fontSize: 15, fontWeight: 600 },
 }

@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { api } from '../api'
+import PageHeader from '../components/PageHeader'
 import { roleLabel, useAuth } from '../context/AuthContext'
 import { colors } from '../theme'
 
@@ -82,21 +83,23 @@ export default function Profile() {
 
   return (
     <div className="page">
-      <h1 className="page-title">Profile</h1>
-      <p className="page-subtitle">Manage your account credentials, recovery email, and sign-in security.</p>
+      <PageHeader
+        title="Profile"
+        subtitle="Manage your account credentials, recovery email, and sign-in security."
+      />
 
       <div style={styles.headerCard}>
         <span style={styles.avatar}>{initials}</span>
         <div>
-          <div style={{ fontWeight: 700, fontSize: 18 }}>{display}</div>
-          <div style={{ color: colors.textMuted, fontSize: 14 }}>
+          <div style={{ fontWeight: 700, fontSize: 19 }}>{display}</div>
+          <div style={{ color: colors.textMuted, fontSize: 15 }}>
             @{username || 'admin'} · {role ? roleLabel(role) : 'User'}
           </div>
         </div>
       </div>
 
       {message && <div style={styles.ok}>{message}</div>}
-      {error && <div style={styles.error}>{error}</div>}
+      {error && <div style={styles.error} role="alert">{error}</div>}
 
       <form onSubmit={handleSubmit} style={styles.form} autoComplete="off">
         <h3 style={styles.sectionTitle}>Account Details</h3>
@@ -110,7 +113,7 @@ export default function Profile() {
             placeholder="Your display name"
             autoComplete="name"
           />
-          <p style={{ color: colors.textMuted, fontSize: 12, margin: '8px 0 0' }}>
+          <p style={{ color: colors.textMuted, fontSize: 13, margin: '8px 0 0' }}>
             Used in greetings like “Good morning, {name.trim() || '…'}”.
           </p>
         </div>
@@ -136,7 +139,7 @@ export default function Profile() {
             placeholder="Used for password reset"
             autoComplete="email"
           />
-          <p style={{ color: colors.textMuted, fontSize: 12, margin: '8px 0 0' }}>
+          <p style={{ color: colors.textMuted, fontSize: 13, margin: '8px 0 0' }}>
             Required for password reset and email verification codes.
           </p>
         </div>
@@ -150,14 +153,14 @@ export default function Profile() {
           />
           <span>
             <div style={{ fontWeight: 600 }}>Require an email verification code at sign-in</div>
-            <div style={{ color: colors.textMuted, fontSize: 13, marginTop: 4 }}>
+            <div style={{ color: colors.textMuted, fontSize: 14, marginTop: 4 }}>
               Each login will require your password plus a one-time code sent to your account email.
             </div>
           </span>
         </label>
 
         <h3 style={{ ...styles.sectionTitle, marginTop: 28 }}>Change Password</h3>
-        <p style={{ color: colors.textMuted, fontSize: 13, margin: '0 0 16px' }}>
+        <p style={{ color: colors.textMuted, fontSize: 14, margin: '0 0 16px' }}>
           Enter your current password to confirm any changes.
         </p>
 
@@ -208,19 +211,19 @@ const styles: Record<string, React.CSSProperties> = {
   headerCard: {
     display: 'flex', alignItems: 'center', gap: 16, padding: '20px 24px',
     background: colors.card, border: `1px solid ${colors.border}`,
-    borderRadius: 12, marginBottom: 24, maxWidth: 480,
+    borderRadius: 10, marginBottom: 24, maxWidth: 480,
   },
   avatar: {
     width: 56, height: 56, borderRadius: '50%',
-    background: `linear-gradient(135deg, ${colors.brand}, ${colors.brandDeep})`,
-    color: colors.bg, display: 'grid', placeItems: 'center',
-    fontSize: 20, fontWeight: 700,
+    background: colors.brandDim,
+    color: colors.brand, display: 'grid', placeItems: 'center',
+    fontSize: 22, fontWeight: 700,
   },
   form: {
     maxWidth: 480, background: colors.card, border: `1px solid ${colors.border}`,
-    borderRadius: 12, padding: '28px 32px',
+    borderRadius: 10, padding: '28px 32px',
   },
-  sectionTitle: { margin: '0 0 16px', fontSize: 15, fontWeight: 600 },
+  sectionTitle: { margin: '0 0 16px', fontSize: 16, fontWeight: 600 },
   toggleRow: {
     display: 'flex', alignItems: 'flex-start', gap: 12,
     padding: '14px 0 4px',

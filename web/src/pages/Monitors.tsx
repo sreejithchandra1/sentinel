@@ -1,10 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, Incident, Monitor } from '../api'
-import { ColGroup, ResizableTh, useColumnResize } from '../components/ColumnResize'
+import { ColGroup, ResizableTh, useColumnResize, useTableSort } from '../components/ColumnResize'
+import ConfirmDialog from '../components/ConfirmDialog'
 import CustomerFilter, { matchesCustomerFilter } from '../components/CustomerFilter'
 import DashboardRail from '../components/DashboardRail'
-import DeleteMonitorButton from '../components/DeleteMonitorButton'
+import KebabMenu from '../components/KebabMenu'
+import MetricCard from '../components/MetricCard'
+import PageHeader from '../components/PageHeader'
+import Panel from '../components/Panel'
+import MonitorForm from './MonitorForm'
+import SegmentedTabs from '../components/SegmentedTabs'
 import Sparkline from '../components/Sparkline'
 import StatusBadge, { badgeStatusFor } from '../components/StatusBadge'
 import TypeBadge from '../components/TypeBadge'
@@ -62,8 +68,9 @@ export default function Monitors() {
   const [customers, setCustomers] = useState<{ id: string; name: string }[]>([])
   const [search, setSearch] = useState('')
   const [error, setError] = useState('')
-  const [menuId, setMenuId] = useState<string | null>(null)
-  const menuRef = useRef<HTMLDivElement | null>(null)
+  const [monitorForm, setMonitorForm] = useState<string | 'new' | null>(null)
+  const [deleteMonitor, setDeleteMonitor] = useState<Monitor | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const tableRef = useRef<HTMLTableElement>(null)
   const { widths, startResize, autoFit } = useColumnResize('monitors', 7)
 
@@ -92,14 +99,6 @@ export default function Monitors() {
     return () => clearInterval(id)
   }, [tagFilter])
 
-  useEffect(() => {
-    function onDocClick(e: MouseEvent) {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuId(null)
-    }
-    document.addEventListener('mousedown', onDocClick)
-    return () => document.removeEventListener('mousedown', onDocClick)
-  }, [])
-
   const customerScoped = useMemo(
     () => monitors.filter(m => matchesCustomerFilter(m.tenant_id, selectedCustomers)),
     [monitors, selectedCustomers],
@@ -118,6 +117,32 @@ export default function Monitors() {
     if (statusTab === 'all') return searched
     return searched.filter(m => m.last_status === statusTab)
   }, [searched, statusTab])
+
+  const sortValue = useCallback((m: Monitor, key: string) => {
+    if (key === 'name') return m.name
+    if (key === 'type') return m.type
+    if (key === 'status') return m.last_status
+    if (key === 'response') return m.latest_response_time_ms ?? null
+    if (key === 'uptime') return statsMap[m.id]?.uptime_pct ?? null
+    if (key === 'checked') return m.last_checked_at || ''
+    return null
+  }, [statsMap])
+  const { sorted, header } = useTableSort(filtered, sortValue)
+
+  async function confirmDelete() {
+    if (!deleteMonitor) return
+    setDeleting(true)
+    setError('')
+    try {
+      await api.deleteMonitor(deleteMonitor.id)
+      setMonitors(prev => prev.filter(x => x.id !== deleteMonitor.id))
+      setDeleteMonitor(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   const up = searched.filter(m => m.last_status === 'up').length
   const down = searched.filter(m => m.last_status === 'down').length
@@ -164,96 +189,80 @@ export default function Monitors() {
 
   return (
     <div className="page" style={styles.page}>
-      <div style={styles.layout}>
-        <div style={styles.main}>
-          <div style={styles.topBar}>
-            <div>
-              <h1 className="page-title" style={{ fontSize: 28 }}>
-                {greetingFor(hour)}, {name}
-              </h1>
-              <p className="page-subtitle" style={{ marginBottom: 0 }}>
-                Here&apos;s what&apos;s happening with your monitors.
-              </p>
-            </div>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              {isPlatformAdmin && customers.length > 0 && (
-                <CustomerFilter
-                  customers={customers}
-                  selectedIds={selectedCustomers}
-                  onChange={setSelectedCustomers}
-                />
-              )}
-              {isAdmin && (
-                <Link to="/monitors/new" className="btn btn-primary">+ Add Monitor</Link>
-              )}
-            </div>
-          </div>
-
+      <ConfirmDialog
+        open={!!deleteMonitor}
+        title="Delete monitor?"
+        message={
+          deleteMonitor
+            ? `Delete “${deleteMonitor.name}”? Check history for this monitor will be removed.`
+            : 'Delete this monitor?'
+        }
+        confirmLabel="Delete"
+        danger
+        busy={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => { if (!deleting) setDeleteMonitor(null) }}
+      />
+      <PageHeader
+        title={`${greetingFor(hour)}, ${name}`}
+        subtitle="Here's what's happening with your monitors."
+        actions={
+          <>
+            {isPlatformAdmin && (
+              <CustomerFilter
+                customers={customers}
+                selectedIds={selectedCustomers}
+                onChange={setSelectedCustomers}
+              />
+            )}
+            {isAdmin && (
+              <button type="button" className="btn btn-primary" onClick={() => setMonitorForm('new')}>+ Add Monitor</button>
+            )}
+          </>
+        }
+      />
+      <div className="page-layout">
+        <div className="page-layout-main">
           {searched.length > 0 && (
-            <div style={styles.metrics}>
-              <div style={styles.metricWide}>
-                <div style={styles.metricLabel}>Overall Uptime</div>
-                <div style={styles.metricValue}>
-                  {overallUptime == null ? '—' : `${overallUptime.toFixed(2)}%`}
-                </div>
-                <div style={styles.metricSub}>Last 30 days · filtered monitors</div>
+            <div className="kpi-strip">
+              <div className="kpi-wide">
+                <MetricCard
+                  label="Overall Uptime"
+                  value={overallUptime == null ? '—' : `${overallUptime.toFixed(2)}%`}
+                  sub="Last 30 days · filtered monitors"
+                />
               </div>
-              <div style={styles.metricCard}>
-                <div style={styles.metricLabel}>Monitors</div>
-                <div style={styles.metricValue}>{searched.length}</div>
-                <div style={styles.metricSub}>Total monitors</div>
-              </div>
-              <div style={{ ...styles.metricStat, borderColor: 'rgba(34,197,94,0.35)' }}>
-                <div style={{ ...styles.statCount, color: colors.green }}>{up}</div>
-                <div style={styles.statLabel}>Healthy</div>
-              </div>
-              <div style={{ ...styles.metricStat, borderColor: 'rgba(245,158,11,0.35)' }}>
-                <div style={{ ...styles.statCount, color: colors.yellow }}>{degraded}</div>
-                <div style={styles.statLabel}>Warning</div>
-              </div>
-              <div style={{ ...styles.metricStat, borderColor: 'rgba(239,68,68,0.35)' }}>
-                <div style={{ ...styles.statCount, color: colors.red }}>{down}</div>
-                <div style={styles.statLabel}>Down</div>
-              </div>
+              <MetricCard label="Monitors" value={String(searched.length)} sub="Total monitors" />
+              <MetricCard label="Healthy" value={String(up)} accent="green" />
+              <MetricCard label="Warning" value={String(degraded)} accent="yellow" />
+              <MetricCard label="Down" value={String(down)} accent="red" />
             </div>
           )}
 
           {(monitors.length > 0 || search) && (
-            <div style={styles.toolbar}>
+            <div className="toolbar-row">
               <input
-                className="input"
+                className="input search-field"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search monitors…"
-                style={styles.searchInput}
+                aria-label="Search monitors"
               />
-              <div style={styles.tabs}>
-                {statusTabs.map(tab => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setStatusTab(tab.id)}
-                    style={{
-                      ...styles.tab,
-                      ...(statusTab === tab.id ? styles.tabActive : {}),
-                    }}
-                  >
-                    {tab.label}
-                    {typeof tab.count === 'number' && (
-                      <span style={styles.tabCount}>{tab.count}</span>
-                    )}
-                  </button>
-                ))}
-              </div>
+              <SegmentedTabs
+                label="Filter by status"
+                value={statusTab}
+                onChange={id => setStatusTab(id as StatusTab)}
+                tabs={statusTabs}
+              />
             </div>
           )}
 
           {allTags.length > 0 && (
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+            <div className="chip-row" role="group" aria-label="Filter by tag">
               <button
                 type="button"
                 className="btn"
-                style={{ fontSize: 13, minHeight: 36, ...(tagFilter === '' ? { background: colors.bgElevated } : {}) }}
+                style={{ fontSize: 14, minHeight: 36, ...(tagFilter === '' ? { background: colors.bgElevated } : {}) }}
                 onClick={() => setTagFilter('')}
               >
                 All tags
@@ -263,7 +272,7 @@ export default function Monitors() {
                   key={tag}
                   type="button"
                   className="btn"
-                  style={{ fontSize: 13, minHeight: 36, ...(tagFilter === tag ? { background: colors.bgElevated } : {}) }}
+                  style={{ fontSize: 14, minHeight: 36, ...(tagFilter === tag ? { background: colors.bgElevated } : {}) }}
                   onClick={() => setTagFilter(tag)}
                 >
                   {tag}
@@ -272,42 +281,42 @@ export default function Monitors() {
             </div>
           )}
 
-          {error && <div style={styles.error}>{error}</div>}
+          {error && <div className="flash-error" role="alert">{error}</div>}
 
           {monitors.length === 0 ? (
-            <div style={styles.empty}>
-              <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 8 }}>No monitors yet</div>
-              <div style={{ color: colors.textMuted, marginBottom: 20 }}>
+            <div className="empty-state">
+              <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 8, color: colors.text }}>No monitors yet</div>
+              <div style={{ marginBottom: 20 }}>
                 Add your first website, port, SSL, or DNS monitor.
               </div>
-              {isAdmin && <Link to="/monitors/new" className="btn btn-primary">Add Monitor</Link>}
+              {isAdmin && <button type="button" className="btn btn-primary" onClick={() => setMonitorForm('new')}>Add Monitor</button>}
             </div>
           ) : filtered.length === 0 ? (
-            <div style={styles.empty}>
-              <div style={{ fontWeight: 600, marginBottom: 8 }}>No matches</div>
-              <div style={{ color: colors.textMuted }}>
+            <div className="empty-state">
+              <div style={{ fontWeight: 600, marginBottom: 8, color: colors.text }}>No matches</div>
+              <div>
                 {search.trim()
                   ? `No monitors match “${search.trim()}”.`
                   : 'No monitors for the selected filters.'}
               </div>
             </div>
           ) : (
-            <div className="data-table-wrap" style={styles.tableWrap}>
-              <table ref={tableRef} className="data-table" style={styles.table}>
+            <Panel padded={false} className="data-table-wrap">
+              <table ref={tableRef} className="data-table">
                 <ColGroup widths={widths} />
                 <thead>
                   <tr>
-                    <ResizableTh index={0} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Monitor</ResizableTh>
-                    <ResizableTh index={1} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Type</ResizableTh>
-                    <ResizableTh index={2} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Status</ResizableTh>
-                    <ResizableTh index={3} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Response Time</ResizableTh>
-                    <ResizableTh index={4} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Uptime (30d)</ResizableTh>
-                    <ResizableTh index={5} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Last Checked</ResizableTh>
-                    <ResizableTh index={6} style={{ ...styles.th, width: 48 }} startResize={startResize} autoFit={autoFit} tableRef={tableRef} />
+                    <ResizableTh index={0} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('name')}>Monitor</ResizableTh>
+                    <ResizableTh index={1} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('type')}>Type</ResizableTh>
+                    <ResizableTh index={2} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('status')}>Status</ResizableTh>
+                    <ResizableTh index={3} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('response')}>Response Time</ResizableTh>
+                    <ResizableTh index={4} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('uptime')}>Uptime (30d)</ResizableTh>
+                    <ResizableTh index={5} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('checked')}>Last Checked</ResizableTh>
+                    <ResizableTh index={6} className="col-actions" resize={false} startResize={startResize} autoFit={autoFit} tableRef={tableRef} />
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map(m => {
+                  {sorted.map(m => {
                     const st = statsMap[m.id]
                     const ms = m.latest_response_time_ms
                     const sparkColor = m.last_status === 'down'
@@ -316,22 +325,25 @@ export default function Monitors() {
                         ? colors.yellow
                         : colors.green
                     return (
-                      <tr key={m.id} style={styles.tr}>
-                        <td style={styles.td}>
+                      <tr
+                        key={m.id}
+                        className={m.last_status === 'down' ? 'row-down' : m.last_status === 'degraded' ? 'row-warn' : undefined}
+                      >
+                        <td>
                           <Link to={`/monitors/${m.id}`} style={styles.monitorLink}>
                             <span style={styles.monitorName}>{m.name}</span>
                             <span style={styles.monitorUrl}>{monitorTarget(m)}</span>
                           </Link>
                         </td>
-                        <td style={styles.td}>
+                        <td>
                           <TypeBadge type={m.type} url={m.url} />
                         </td>
-                        <td style={styles.td}>
+                        <td>
                           <StatusBadge status={badgeStatusFor(m.type, m.last_status)} />
                         </td>
-                        <td style={styles.td}>
+                        <td>
                           <div style={styles.responseCell}>
-                            <span style={{ fontWeight: 600 }}>
+                            <span className="num" style={{ fontWeight: 600 }}>
                               {typeof ms === 'number' ? `${ms}ms` : '—'}
                             </span>
                             {st?.points && st.points.length > 1 && (
@@ -339,214 +351,79 @@ export default function Monitors() {
                             )}
                           </div>
                         </td>
-                        <td style={styles.td}>
+                        <td className="num">
                           {st ? `${st.uptime_pct.toFixed(2)}%` : '—'}
                         </td>
-                        <td style={{ ...styles.td, color: colors.textMuted }}>
+                        <td className="num" style={{ color: colors.textMuted }}>
                           {m.last_checked_at ? timeAgo(m.last_checked_at) : 'Waiting'}
                         </td>
-                        <td style={styles.td}>
-                          <div style={{ position: 'relative' }} ref={menuId === m.id ? menuRef : undefined}>
-                            <button
-                              type="button"
-                              aria-label="Actions"
-                              style={styles.kebab}
-                              onClick={() => setMenuId(menuId === m.id ? null : m.id)}
-                            >
-                              ⋮
-                            </button>
-                            {menuId === m.id && (
-                              <div style={styles.menu}>
-                                <Link
-                                  to={`/monitors/${m.id}`}
-                                  style={styles.menuItem}
-                                  onClick={() => setMenuId(null)}
-                                >
+                        <td className="col-actions">
+                          <KebabMenu>
+                            {close => (
+                              <>
+                                <Link to={`/monitors/${m.id}`} onClick={close}>
                                   View
                                 </Link>
                                 {isAdmin && (
                                   <>
-                                    <Link
-                                      to={`/monitors/${m.id}/edit`}
-                                      style={styles.menuItem}
-                                      onClick={() => setMenuId(null)}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        close()
+                                        setMonitorForm(m.id)
+                                      }}
                                     >
                                       Edit
-                                    </Link>
-                                    <div style={styles.menuDanger}>
-                                      <DeleteMonitorButton
-                                        id={m.id}
-                                        name={m.name}
-                                        onDeleted={() => {
-                                          setMenuId(null)
-                                          setMonitors(prev => prev.filter(x => x.id !== m.id))
-                                        }}
-                                      />
-                                    </div>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="kebab-danger"
+                                      onClick={() => {
+                                        close()
+                                        setDeleteMonitor(m)
+                                      }}
+                                    >
+                                      Delete
+                                    </button>
                                   </>
                                 )}
-                              </div>
+                              </>
                             )}
-                          </div>
+                          </KebabMenu>
                         </td>
                       </tr>
                     )
                   })}
                 </tbody>
               </table>
-            </div>
+            </Panel>
           )}
         </div>
 
         <DashboardRail incidents={incidents} uptimePct={overallUptime} />
       </div>
+
+      {monitorForm != null && (
+        <MonitorForm
+          monitorId={monitorForm === 'new' ? undefined : monitorForm}
+          onClose={() => setMonitorForm(null)}
+          onSaved={() => {
+            setMonitorForm(null)
+            load()
+          }}
+        />
+      )}
     </div>
   )
 }
 
 const styles: Record<string, React.CSSProperties> = {
   page: { maxWidth: '100%' },
-  layout: {
-    display: 'flex',
-    gap: 24,
-    alignItems: 'flex-start',
-    flexWrap: 'wrap',
-  },
-  main: { flex: '1 1 560px', minWidth: 0 },
-  topBar: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 28,
-    gap: 16,
-    flexWrap: 'wrap',
-  },
-  metrics: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-    gap: 12,
-    marginBottom: 24,
-  },
-  metricWide: {
-    background: colors.card,
-    border: `1px solid ${colors.border}`,
-    borderRadius: colors.radius,
-    padding: 24,
-    gridColumn: 'span 2',
-  },
-  metricCard: {
-    background: colors.card,
-    border: `1px solid ${colors.border}`,
-    borderRadius: colors.radius,
-    padding: 24,
-  },
-  metricStat: {
-    background: colors.card,
-    border: `1px solid ${colors.border}`,
-    borderRadius: colors.radius,
-    padding: '20px 16px',
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 4,
-  },
-  metricLabel: {
-    fontSize: 12,
-    fontWeight: 500,
-    color: colors.textMuted,
-    marginBottom: 8,
-  },
-  metricValue: {
-    fontSize: 28,
-    fontWeight: 700,
-    letterSpacing: '-0.02em',
-    lineHeight: 1.1,
-  },
-  metricSub: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginTop: 8,
-  },
-  statCount: {
-    fontSize: 24,
-    fontWeight: 700,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: colors.textMuted,
-    fontWeight: 500,
-  },
-  toolbar: {
-    display: 'flex',
-    gap: 12,
-    alignItems: 'center',
-    marginBottom: 16,
-    flexWrap: 'wrap',
-  },
-  searchInput: {
-    maxWidth: 280,
-    width: '100%',
-  },
-  tabs: {
-    display: 'flex',
-    gap: 4,
-    background: colors.card,
-    border: `1px solid ${colors.border}`,
-    borderRadius: 12,
-    padding: 4,
-  },
-  tab: {
-    border: 'none',
-    background: 'transparent',
-    color: colors.textMuted,
-    fontSize: 13,
-    fontWeight: 500,
-    padding: '8px 14px',
-    borderRadius: 8,
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 6,
-    minHeight: 36,
-  },
-  tabActive: {
-    background: colors.bgElevated,
-    color: colors.text,
-  },
-  tabCount: {
-    fontSize: 11,
-    color: colors.textDim,
-  },
-  tableWrap: {
-    background: colors.card,
-    border: `1px solid ${colors.border}`,
-    borderRadius: colors.radius,
-  },
-  table: {
-    width: '100%',
-    borderCollapse: 'collapse',
-    fontSize: 14,
-  },
-  th: {
-    textAlign: 'left',
-    padding: '14px 16px',
-    fontSize: 12,
-    fontWeight: 600,
-    color: colors.textMuted,
-    borderBottom: `1px solid ${colors.border}`,
-    whiteSpace: 'nowrap',
-  },
-  tr: {
-    borderBottom: `1px solid ${colors.border}`,
-  },
-  td: {
-    padding: '16px',
-    verticalAlign: 'middle',
-  },
+  th: {},
   monitorLink: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 4,
+    gap: 2,
     color: 'inherit',
     textDecoration: 'none',
     minWidth: 0,
@@ -562,55 +439,5 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: 10,
-  },
-  kebab: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    border: `1px solid transparent`,
-    background: 'transparent',
-    color: colors.textMuted,
-    fontSize: 18,
-    lineHeight: 1,
-  },
-  menu: {
-    position: 'absolute',
-    right: 0,
-    top: '100%',
-    marginTop: 4,
-    minWidth: 140,
-    background: colors.bgElevated,
-    border: `1px solid ${colors.border}`,
-    borderRadius: 12,
-    boxShadow: '0 12px 32px rgba(0,0,0,0.45)',
-    zIndex: 30,
-    overflow: 'hidden',
-  },
-  menuItem: {
-    display: 'block',
-    padding: '10px 14px',
-    fontSize: 13,
-    fontWeight: 500,
-    color: colors.text,
-    textDecoration: 'none',
-    borderBottom: `1px solid ${colors.border}`,
-  },
-  menuDanger: {
-    padding: 8,
-  },
-  empty: {
-    textAlign: 'center',
-    padding: '64px 24px',
-    background: colors.card,
-    borderRadius: colors.radius,
-    border: `1px solid ${colors.border}`,
-  },
-  error: {
-    background: colors.redDim,
-    color: colors.red,
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 16,
-    border: `1px solid rgba(239,68,68,0.3)`,
   },
 }

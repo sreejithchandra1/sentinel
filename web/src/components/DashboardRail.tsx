@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Incident } from '../api'
-import { colors } from '../theme'
+import { colors, fonts } from '../theme'
+import Panel from './Panel'
 
 function timeAgo(iso: string): string {
   const sec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
@@ -35,8 +36,8 @@ export default function DashboardRail({
   const dayBars = buildDayBars(incidents, 30)
 
   return (
-    <aside style={styles.rail}>
-      <section style={styles.card}>
+    <aside className="side-rail" aria-label="Incident summary">
+      <Panel>
         <div style={styles.cardLabel}>Last Incident</div>
         {last ? (
           <>
@@ -53,9 +54,9 @@ export default function DashboardRail({
         ) : (
           <div style={styles.empty}>No incidents yet</div>
         )}
-      </section>
+      </Panel>
 
-      <section style={styles.card}>
+      <Panel>
         <div style={styles.cardHeader}>
           <span style={styles.cardLabel}>Recent Incidents</span>
           <Link to="/incidents" style={styles.linkMuted}>View all</Link>
@@ -81,34 +82,34 @@ export default function DashboardRail({
             ))}
           </ul>
         )}
-      </section>
+      </Panel>
 
-      <section style={styles.card}>
+      <Panel>
         <div style={styles.cardLabel}>Uptime (30 days)</div>
         <div style={styles.uptimeValue}>
           {uptimePct == null ? '—' : `${uptimePct.toFixed(2)}%`}
         </div>
         <div style={styles.bars}>
-          {dayBars.map((ok, i) => (
+          {dayBars.map((bar, i) => (
             <span
               key={i}
-              title={ok ? 'Healthy' : 'Incident'}
+              title={`${bar.date} · ${bar.ok ? 'Healthy' : 'Incident'}`}
               style={{
                 ...styles.bar,
-                background: ok ? colors.green : colors.red,
-                opacity: ok ? 0.85 : 1,
+                background: bar.ok ? colors.green : colors.red,
+                opacity: bar.ok ? 0.85 : 1,
               }}
             />
           ))}
         </div>
-      </section>
+      </Panel>
     </aside>
   )
 }
 
-function buildDayBars(incidents: Incident[], days: number): boolean[] {
+function buildDayBars(incidents: Incident[], days: number): { ok: boolean; date: string }[] {
   const now = new Date()
-  const bars: boolean[] = []
+  const bars: { ok: boolean; date: string }[] = []
   for (let i = days - 1; i >= 0; i--) {
     const dayStart = new Date(now)
     dayStart.setHours(0, 0, 0, 0)
@@ -121,25 +122,15 @@ function buildDayBars(incidents: Incident[], days: number): boolean[] {
       const end = inc.resolved_at ? new Date(inc.resolved_at).getTime() : Date.now()
       return start < dayEnd.getTime() && end >= dayStart.getTime()
     })
-    bars.push(!hit)
+    bars.push({
+      ok: !hit,
+      date: dayStart.toLocaleDateString([], { month: 'short', day: 'numeric' }),
+    })
   }
   return bars
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  rail: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 16,
-    width: 300,
-    flex: '0 1 300px',
-  },
-  card: {
-    background: colors.card,
-    border: `1px solid ${colors.border}`,
-    borderRadius: colors.radius,
-    padding: 24,
-  },
   cardHeader: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -152,13 +143,15 @@ const styles: Record<string, React.CSSProperties> = {
     color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: '0.04em',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   lastTime: {
-    fontSize: 28,
-    fontWeight: 700,
+    fontSize: 24,
+    fontWeight: 600,
     letterSpacing: '-0.02em',
     marginBottom: 8,
+    fontFamily: fonts.mono,
+    fontVariantNumeric: 'tabular-nums',
   },
   lastTitle: {
     fontSize: 14,
@@ -166,30 +159,30 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 6,
   },
   lastMsg: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textMuted,
     marginBottom: 8,
     lineHeight: 1.4,
   },
   lastMeta: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 600,
     color: colors.textMuted,
     marginBottom: 12,
   },
   link: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 600,
     color: colors.brand,
   },
   linkMuted: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 500,
     color: colors.textMuted,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   empty: {
-    fontSize: 13,
+    fontSize: 14,
     color: colors.textMuted,
   },
   list: {
@@ -198,7 +191,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 0,
     display: 'flex',
     flexDirection: 'column',
-    gap: 14,
+    gap: 12,
   },
   listItem: {
     display: 'flex',
@@ -208,27 +201,30 @@ const styles: Record<string, React.CSSProperties> = {
   dot: {
     width: 8,
     height: 8,
-    borderRadius: '50%',
+    borderRadius: 2,
     marginTop: 5,
     flexShrink: 0,
   },
   listTitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 600,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
   listMeta: {
-    fontSize: 11,
+    fontSize: 12,
     color: colors.textMuted,
     marginTop: 2,
+    fontFamily: fonts.mono,
   },
   uptimeValue: {
-    fontSize: 28,
-    fontWeight: 700,
+    fontSize: 24,
+    fontWeight: 600,
     letterSpacing: '-0.02em',
     marginBottom: 16,
+    fontFamily: fonts.mono,
+    fontVariantNumeric: 'tabular-nums',
   },
   bars: {
     display: 'flex',
@@ -239,7 +235,7 @@ const styles: Record<string, React.CSSProperties> = {
   bar: {
     flex: 1,
     height: '100%',
-    borderRadius: 3,
+    borderRadius: 2,
     minWidth: 0,
   },
 }

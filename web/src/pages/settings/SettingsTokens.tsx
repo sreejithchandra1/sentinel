@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from 'react'
 import { api, APIToken, APITokenCreated } from '../../api'
 import { ColGroup, ResizableTh, useColumnResize } from '../../components/ColumnResize'
 import ConfirmDialog from '../../components/ConfirmDialog'
+import KebabMenu from '../../components/KebabMenu'
 import { colors } from '../../theme'
 
 export default function SettingsTokens() {
@@ -53,7 +54,7 @@ export default function SettingsTokens() {
 
   return (
     <>
-      {error && <div style={styles.error}>{error}</div>}
+      {error && <div style={styles.error} role="alert">{error}</div>}
       {created && (
         <div style={styles.tokenBox}>
           <strong>Token created — copy now, it won&apos;t be shown again:</strong>
@@ -81,27 +82,33 @@ export default function SettingsTokens() {
                   <ResizableTh index={1} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Prefix</ResizableTh>
                   <ResizableTh index={2} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Created</ResizableTh>
                   <ResizableTh index={3} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Last used</ResizableTh>
-                  <ResizableTh index={4} style={{ ...styles.th, textAlign: 'right' }} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Actions</ResizableTh>
+                  <ResizableTh index={4} className="col-actions" resize={false} startResize={startResize} autoFit={autoFit} tableRef={tableRef} />
                 </tr>
               </thead>
               <tbody>
                 {tokens.map(t => (
                   <tr key={t.id}>
                     <td style={styles.td}>{t.name}</td>
-                    <td style={{ ...styles.td, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 13, color: colors.textMuted }}>
+                    <td style={{ ...styles.td, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 14, color: colors.textMuted }}>
                       {t.prefix}…
                     </td>
                     <td style={styles.td}>{new Date(t.created_at).toLocaleString()}</td>
                     <td style={styles.td}>{t.last_used_at ? new Date(t.last_used_at).toLocaleString() : '—'}</td>
-                    <td style={{ ...styles.td, textAlign: 'right' }}>
-                      <button
-                        type="button"
-                        className="btn btn-danger"
-                        style={styles.revokeBtn}
-                        onClick={() => setRevokeId(t.id)}
-                      >
-                        Revoke
-                      </button>
+                    <td className="col-actions">
+                      <KebabMenu>
+                        {close => (
+                          <button
+                            type="button"
+                            className="kebab-danger"
+                            onClick={() => {
+                              close()
+                              setRevokeId(t.id)
+                            }}
+                          >
+                            Revoke
+                          </button>
+                        )}
+                      </KebabMenu>
                     </td>
                   </tr>
                 ))}
@@ -130,15 +137,15 @@ export default function SettingsTokens() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  card: { background: colors.card, border: `1px solid ${colors.border}`, borderRadius: 12, padding: 28 },
+  card: { background: colors.card, border: `1px solid ${colors.border}`, borderRadius: 10, padding: 28 },
   title: { margin: '0 0 8px' },
-  desc: { color: colors.textMuted, fontSize: 14, margin: '0 0 20px' },
+  desc: { color: colors.textMuted, fontSize: 15, margin: '0 0 20px' },
   tableWrap: {},
-  table: { width: '100%', borderCollapse: 'collapse', fontSize: 14 },
+  table: { width: '100%', borderCollapse: 'collapse', fontSize: 15 },
   th: {
     textAlign: 'left',
     padding: '0 12px 12px',
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: 600,
     color: colors.textMuted,
     textTransform: 'uppercase',
@@ -153,9 +160,9 @@ const styles: Record<string, React.CSSProperties> = {
   revokeBtn: {
     minHeight: 36,
     padding: '0 14px',
-    fontSize: 13,
+    fontSize: 14,
   },
   tokenBox: { background: colors.bgElevated, border: `1px solid ${colors.border}`, borderRadius: 8, padding: 16, marginBottom: 16 },
-  token: { display: 'block', marginTop: 8, wordBreak: 'break-all', fontSize: 13 },
+  token: { display: 'block', marginTop: 8, wordBreak: 'break-all', fontSize: 14 },
   error: { background: colors.redDim, color: colors.red, padding: 12, borderRadius: 8, marginBottom: 16 },
 }

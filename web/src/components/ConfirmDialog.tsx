@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { colors } from '../theme'
+import ModalCloseButton from './ModalCloseButton'
 
 export default function ConfirmDialog({
   open,
@@ -48,7 +49,10 @@ export default function ConfirmDialog({
         aria-describedby="confirm-dialog-message"
         style={styles.dialog}
       >
-        <h3 id="confirm-dialog-title" style={styles.title}>{title}</h3>
+        <div style={styles.head}>
+          <h3 id="confirm-dialog-title" style={styles.title}>{title}</h3>
+          <ModalCloseButton onClick={onCancel} disabled={busy} />
+        </div>
         <p id="confirm-dialog-message" style={styles.message}>{message}</p>
         <div style={styles.actions}>
           <button
@@ -79,7 +83,7 @@ const styles: Record<string, React.CSSProperties> = {
     position: 'fixed',
     inset: 0,
     zIndex: 1000,
-    background: 'rgba(0, 0, 0, 0.55)',
+    background: 'var(--overlay)',
     display: 'grid',
     placeItems: 'center',
     padding: 24,
@@ -87,27 +91,35 @@ const styles: Record<string, React.CSSProperties> = {
   dialog: {
     width: '100%',
     maxWidth: 420,
-    background: colors.bgElevated,
+    background: colors.card,
     border: `1px solid ${colors.border}`,
-    borderRadius: 14,
+    borderRadius: 10,
     padding: '24px 28px',
-    boxShadow: '0 24px 48px rgba(0,0,0,0.45)',
+    boxShadow: 'var(--shadow)',
+  },
+  head: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 10,
   },
   title: {
-    margin: '0 0 10px',
-    fontSize: 18,
+    margin: 0,
+    fontSize: 19,
     fontWeight: 700,
     letterSpacing: '-0.01em',
   },
   message: {
     margin: '0 0 24px',
-    fontSize: 14,
+    fontSize: 15,
     lineHeight: 1.5,
     color: colors.textMuted,
   },
   actions: {
     display: 'flex',
     justifyContent: 'flex-end',
+    flexWrap: 'wrap',
     gap: 10,
   },
 }

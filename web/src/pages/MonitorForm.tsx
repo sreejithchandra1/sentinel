@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api, Customer, Monitor, MonitorType, NotificationsSummary } from '../api'
 import DeleteMonitorButton from '../components/DeleteMonitorButton'
+import FormModal from '../components/FormModal'
 import { useAuth } from '../context/AuthContext'
 import { colors } from '../theme'
 import { numberFieldValue, parseNumberInput } from '../utils/numberInput'
@@ -32,9 +33,18 @@ const defaults: Partial<Monitor> = {
   notify_webhooks: true,
 }
 
-export default function MonitorForm() {
-  const { id } = useParams<{ id: string }>()
+export default function MonitorForm({
+  monitorId,
+  onClose,
+  onSaved,
+}: {
+  monitorId?: string
+  onClose?: () => void
+  onSaved?: () => void
+} = {}) {
+  const params = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const id = monitorId ?? params.id
   const { isPlatformAdmin } = useAuth()
   const [form, setForm] = useState<Partial<Monitor>>(defaults)
   const [error, setError] = useState('')
@@ -126,7 +136,8 @@ export default function MonitorForm() {
     try {
       if (id) {
         await api.updateMonitor(id, payload)
-        navigate(`/monitors/${id}`)
+        if (onSaved) onSaved()
+        else navigate(`/monitors/${id}`)
         return
       }
 
@@ -150,22 +161,34 @@ export default function MonitorForm() {
             ? `Monitor created, but performance target failed: ${perfErr.message}`
             : 'Monitor created, but performance target failed'
           setError(msg)
-          // Stay on form briefly so the error is visible, then go to the monitor.
-          setTimeout(() => navigate(`/monitors/${created.id}`), 2500)
+          setTimeout(() => {
+            if (onSaved) onSaved()
+            else navigate(`/monitors/${created.id}`)
+          }, 2500)
           return
         }
       }
-      navigate(`/monitors/${created.id}`)
+      if (onSaved) onSaved()
+      else navigate(`/monitors/${created.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed')
     }
   }
 
+  function handleClose() {
+    if (onClose) onClose()
+    else if (id) navigate(`/monitors/${id}`)
+    else navigate('/')
+  }
+
   return (
-    <div className="page">
-      <h1 className="page-title">{id ? 'Edit Monitor' : 'Add Monitor'}</h1>
-      <p className="page-subtitle">Configure check type, target, and alert settings.</p>
-      {error && <div style={styles.error}>{error}</div>}
+    <FormModal
+      title={id ? 'Edit Monitor' : 'Add Monitor'}
+      subtitle="Configure check type, target, and alert settings."
+      onClose={handleClose}
+      wide
+    >
+      {error && <div className="flash-error" role="alert">{error}</div>}
       <form onSubmit={handleSubmit} style={styles.form}>
         <Field label="Monitor Type">
           <select value={monitorType} onChange={e => set('type', e.target.value as MonitorType)} className="input">
@@ -226,7 +249,7 @@ export default function MonitorForm() {
             <Field label="Keyword must not exist">
               <input value={form.keyword_must_not_exist || ''} onChange={e => set('keyword_must_not_exist', e.target.value)} className="input" />
             </Field>
-            <div style={styles.row}>
+            <div className="form-row">
               <Field label="HTTP Basic Auth username">
                 <input
                   autoComplete="off"
@@ -247,7 +270,7 @@ export default function MonitorForm() {
                 />
               </Field>
             </div>
-            <p style={{ color: colors.textMuted, fontSize: 13, margin: '-8px 0 12px' }}>
+            <p style={{ color: colors.textMuted, fontSize: 14, margin: '-8px 0 12px' }}>
               Sent as an Authorization header for htpasswd-protected sites. Clear the username to disable.
             </p>
             <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -302,14 +325,14 @@ export default function MonitorForm() {
             <Field label="Grace period (seconds)">
               <input type="number" min={30} className="input" value={numberFieldValue(graceSeconds)}
                 onChange={e => setGraceSeconds(parseNumberInput(e.target.value))} />
-              <p style={{ color: colors.textMuted, fontSize: 13, margin: '8px 0 0' }}>
+              <p style={{ color: colors.textMuted, fontSize: 14, margin: '8px 0 0' }}>
                 Alert if no ping received within this window after the last heartbeat.
               </p>
             </Field>
             {form.heartbeat_token && (
               <Field label="Ping URL">
                 <input readOnly className="input" value={`${window.location.origin}/api/heartbeat/${form.heartbeat_token}`} />
-                <p style={{ color: colors.textMuted, fontSize: 13, margin: '8px 0 0' }}>
+                <p style={{ color: colors.textMuted, fontSize: 14, margin: '8px 0 0' }}>
                   Call this URL (GET or POST) from your cron job or script on schedule.
                 </p>
               </Field>
@@ -321,7 +344,7 @@ export default function MonitorForm() {
           <input className="input" value={tagsInput} onChange={e => setTagsInput(e.target.value)} placeholder="production, api" />
         </Field>
 
-        <div style={styles.row}>
+        <div className="form-row">
           <Field label="Interval (seconds)">
             <input type="number" min={30} value={numberFieldValue(form.interval_seconds)} onChange={e => set('interval_seconds', parseNumberInput(e.target.value))} className="input" />
           </Field>
@@ -337,14 +360,14 @@ export default function MonitorForm() {
             value={numberFieldValue(form.alert_after_failures)}
             onChange={e => set('alert_after_failures', parseNumberInput(e.target.value))}
           />
-          <p style={{ color: colors.textMuted, fontSize: 13, margin: '8px 0 0' }}>
+          <p style={{ color: colors.textMuted, fontSize: 14, margin: '8px 0 0' }}>
             Send a DOWN alert after this many failed checks in a row, and wait for the same number of successful checks before RECOVERY (default 2). Only one DOWN email per outage.
           </p>
         </Field>
 
         <div style={styles.notifyBox}>
           <div style={styles.notifyTitle}>Notify via</div>
-          <p style={{ color: colors.textMuted, fontSize: 13, margin: '0 0 12px' }}>
+          <p style={{ color: colors.textMuted, fontSize: 14, margin: '0 0 12px' }}>
             Defaults follow Settings → Notifications. Turn a channel off to skip it for this monitor only.
           </p>
           <NotifyToggle
@@ -396,7 +419,7 @@ export default function MonitorForm() {
             />
             <span>
               Also enable performance monitoring
-              <span style={{ display: 'block', color: colors.textMuted, fontSize: 13, marginTop: 4 }}>
+              <span style={{ display: 'block', color: colors.textMuted, fontSize: 14, marginTop: 4 }}>
                 Creates a separate performance target for latency tracking on this URL.
               </span>
             </span>
@@ -406,14 +429,17 @@ export default function MonitorForm() {
           <input type="checkbox" checked={form.enabled ?? true} onChange={e => set('enabled', e.target.checked)} />
           Enabled
         </label>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+        <div className="form-modal-actions">
+          <button type="button" className="btn" onClick={handleClose}>Cancel</button>
           <button type="submit" className="btn btn-primary">{id ? 'Save Changes' : 'Create Monitor'}</button>
-          {id && form.name && (
-            <DeleteMonitorButton id={id} name={form.name} variant="danger" />
-          )}
         </div>
+        {id && form.name && (
+          <div style={{ marginTop: 8 }}>
+            <DeleteMonitorButton id={id} name={form.name} variant="danger" />
+          </div>
+        )}
       </form>
-    </div>
+    </FormModal>
   )
 }
 
@@ -449,9 +475,9 @@ function NotifyToggle({
       opacity: disabled ? 0.55 : 1,
       cursor: disabled ? 'not-allowed' : 'pointer',
     }}>
-      <span style={{ fontSize: 14 }}>
+      <span style={{ fontSize: 15 }}>
         {label}
-        {hint && <span style={{ color: colors.textMuted, marginLeft: 8, fontSize: 12 }}>{hint}</span>}
+        {hint && <span style={{ color: colors.textMuted, marginLeft: 8, fontSize: 13 }}>{hint}</span>}
       </span>
       <span style={styles.switch}>
         <input
@@ -482,10 +508,8 @@ function NotifyToggle({
 
 const styles: Record<string, React.CSSProperties> = {
   form: {
-    display: 'grid', gap: 20, maxWidth: 720, background: colors.card,
-    padding: '28px 32px', borderRadius: 12, border: `1px solid ${colors.border}`,
+    display: 'grid', gap: 16,
   },
-  row: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, alignItems: 'start' },
   error: {
     background: colors.redDim, color: colors.red,
     padding: 12, borderRadius: 8, marginBottom: 16,
@@ -493,7 +517,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   preset: {
     padding: '6px 14px', borderRadius: 20, border: `1px solid ${colors.border}`,
-    background: colors.bgElevated, color: colors.brand, fontSize: 13,
+    background: colors.bgElevated, color: colors.brand, fontSize: 14,
   },
   notifyBox: {
     border: `1px solid ${colors.border}`,
@@ -501,7 +525,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 14,
     background: colors.bgElevated || colors.card,
   },
-  notifyTitle: { fontSize: 14, fontWeight: 600, marginBottom: 4 },
+  notifyTitle: { fontSize: 15, fontWeight: 600, marginBottom: 4 },
   switch: { position: 'relative', display: 'inline-flex', width: 42, height: 24, flexShrink: 0 },
   switchInput: {
     position: 'absolute',

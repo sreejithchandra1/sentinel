@@ -174,7 +174,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-    fontSize: 14,
+    fontSize: 16,
     color: colors.textMuted,
   },
   label: { fontWeight: 500, flexShrink: 0 },
@@ -189,7 +189,7 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'left',
     color: colors.text,
   },
-  clear: { padding: '8px 12px', fontSize: 13 },
+  clear: { padding: '8px 12px', fontSize: 15 },
   popover: {
     position: 'absolute',
     top: 'calc(100% + 8px)',
@@ -197,10 +197,10 @@ const styles: Record<string, React.CSSProperties> = {
     zIndex: 40,
     width: 280,
     padding: 12,
-    background: colors.bgElevated,
+    background: colors.card,
     border: `1px solid ${colors.border}`,
     borderRadius: 14,
-    boxShadow: '0 16px 40px rgba(0,0,0,0.45)',
+    boxShadow: 'var(--shadow)',
   },
   monthBar: {
     display: 'flex',
@@ -208,7 +208,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     marginBottom: 10,
   },
-  monthTitle: { fontWeight: 600, fontSize: 14, color: colors.text },
+  monthTitle: { fontWeight: 600, fontSize: 16, color: colors.text },
   navBtn: {
     width: 32,
     height: 32,
@@ -216,7 +216,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: `1px solid ${colors.border}`,
     background: colors.bg,
     color: colors.text,
-    fontSize: 18,
+    fontSize: 20,
     lineHeight: 1,
   },
   weekRow: {
@@ -226,7 +226,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   weekday: {
     textAlign: 'center',
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: 600,
     color: colors.textDim,
     padding: '4px 0',
@@ -243,7 +243,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: 'none',
     background: 'transparent',
     color: colors.text,
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: 500,
   },
   dayToday: {
@@ -265,7 +265,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: 'none',
     background: 'transparent',
     color: colors.brand,
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: 600,
   },
 }

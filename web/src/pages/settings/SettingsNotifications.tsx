@@ -75,7 +75,7 @@ export default function SettingsNotifications() {
   return (
     <>
       {message && <div style={styles.ok}>{message}</div>}
-      {error && <div style={styles.error}>{error}</div>}
+      {error && <div style={styles.error} role="alert">{error}</div>}
 
       <div style={styles.card}>
         <h3 style={styles.title}>Notification endpoints</h3>
@@ -201,10 +201,10 @@ function EndpointCard({
 const styles: Record<string, React.CSSProperties> = {
   card: {
     background: colors.card, border: `1px solid ${colors.border}`,
-    borderRadius: 12, padding: '24px 28px',
+    borderRadius: 10, padding: '24px 28px',
   },
-  title: { margin: '0 0 8px', fontSize: 16, fontWeight: 600 },
-  desc: { color: colors.textMuted, fontSize: 14, margin: '0 0 20px' },
+  title: { margin: '0 0 8px', fontSize: 17, fontWeight: 600 },
+  desc: { color: colors.textMuted, fontSize: 15, margin: '0 0 20px' },
   grid: { display: 'grid', gap: 14 },
   endpoint: {
     border: `1px solid ${colors.border}`,
@@ -219,9 +219,9 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'flex-start',
     marginBottom: 14,
   },
-  endpointTitle: { margin: '0 0 6px', fontSize: 15, fontWeight: 600 },
-  endpointDesc: { margin: 0, color: colors.textMuted, fontSize: 13, lineHeight: 1.45 },
-  toggle: { display: 'inline-flex', alignItems: 'center', gap: 10, fontSize: 13, whiteSpace: 'nowrap', userSelect: 'none' },
+  endpointTitle: { margin: '0 0 6px', fontSize: 16, fontWeight: 600 },
+  endpointDesc: { margin: 0, color: colors.textMuted, fontSize: 14, lineHeight: 1.45 },
+  toggle: { display: 'inline-flex', alignItems: 'center', gap: 10, fontSize: 14, whiteSpace: 'nowrap', userSelect: 'none' },
   toggleLabel: { color: colors.textMuted, fontWeight: 500, minWidth: 22 },
   switch: { position: 'relative', display: 'inline-flex', width: 42, height: 24, flexShrink: 0 },
   switchInput: {
@@ -254,14 +254,14 @@ const styles: Record<string, React.CSSProperties> = {
   },
   endpointFooter: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
   badgeOk: {
-    fontSize: 11, fontWeight: 600, color: colors.green,
+    fontSize: 12, fontWeight: 600, color: colors.green,
     background: colors.greenDim, padding: '3px 8px', borderRadius: 4,
   },
   badgeMuted: {
-    fontSize: 11, fontWeight: 600, color: colors.textMuted,
+    fontSize: 12, fontWeight: 600, color: colors.textMuted,
     background: 'rgba(148,163,184,0.15)', padding: '3px 8px', borderRadius: 4,
   },
-  configureBtn: { fontSize: 12, padding: '6px 12px', minHeight: 32, textDecoration: 'none' },
+  configureBtn: { fontSize: 13, padding: '6px 12px', minHeight: 32, textDecoration: 'none' },
   ok: {
     background: colors.greenDim, color: colors.green, padding: 12,
     borderRadius: 8, marginBottom: 16, border: `1px solid rgba(34,197,94,0.3)`,

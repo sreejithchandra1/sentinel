@@ -25,36 +25,48 @@ export default function SettingsServer() {
   return (
     <>
       {message && <div style={styles.ok}>{message}</div>}
-      {error && <div style={styles.error}>{error}</div>}
+      {error && <div style={styles.error} role="alert">{error}</div>}
       <form onSubmit={handleSave} style={styles.card}>
         <h3 style={styles.title}>Server Settings</h3>
         <p style={styles.desc}>Stored in the database. Some values require a process restart to take effect.</p>
-        <label className="field"><span className="field-label">Dashboard URL</span>
-          <input className="input" value={cfg.dashboard_url} onChange={e => setCfg(c => ({ ...c, dashboard_url: e.target.value }))} /></label>
-        <div className="grid-2" style={{ gap: 16 }}>
-          <label className="field"><span className="field-label">Retention (days)</span>
-            <input
-              type="number"
-              min={30}
-              className="input"
-              value={cfg.retention_days}
-              onChange={e => setCfg(c => ({ ...c, retention_days: Math.max(30, +e.target.value || 30) }))}
-            />
-            <span style={{ fontSize: 12, color: colors.textMuted, marginTop: 6 }}>Minimum 30 days — check history is kept for this period.</span>
+        <div style={styles.stack}>
+          <label className="field">
+            <span className="field-label">Dashboard URL</span>
+            <input className="input" value={cfg.dashboard_url} onChange={e => setCfg(c => ({ ...c, dashboard_url: e.target.value }))} />
           </label>
-          <label className="field"><span className="field-label">Workers</span>
-            <input type="number" className="input" value={cfg.workers} onChange={e => setCfg(c => ({ ...c, workers: +e.target.value }))} /></label>
+          <div className="grid-2">
+            <label className="field">
+              <span className="field-label">Retention (days)</span>
+              <input
+                type="number"
+                min={30}
+                className="input"
+                value={cfg.retention_days}
+                onChange={e => setCfg(c => ({ ...c, retention_days: Math.max(30, +e.target.value || 30) }))}
+              />
+              <span style={styles.hint}>Minimum 30 days — check history is kept for this period.</span>
+            </label>
+            <label className="field">
+              <span className="field-label">Workers</span>
+              <input type="number" className="input" value={cfg.workers} onChange={e => setCfg(c => ({ ...c, workers: +e.target.value }))} />
+            </label>
+          </div>
         </div>
-        <button type="submit" className="btn btn-primary" style={{ marginTop: 16 }}>Save</button>
+        <div style={styles.actions}>
+          <button type="submit" className="btn btn-primary">Save</button>
+        </div>
       </form>
     </>
   )
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  card: { background: colors.card, border: `1px solid ${colors.border}`, borderRadius: 12, padding: 28, maxWidth: 640 },
-  title: { margin: '0 0 8px' },
-  desc: { color: colors.textMuted, fontSize: 14, margin: '0 0 20px' },
+  card: { background: colors.card, border: `1px solid ${colors.border}`, borderRadius: 10, padding: '32px' },
+  title: { margin: '0 0 8px', fontSize: 17, fontWeight: 600 },
+  desc: { color: colors.textMuted, fontSize: 15, margin: '0 0 24px', lineHeight: 1.5 },
+  stack: { display: 'flex', flexDirection: 'column', gap: 20 },
+  hint: { fontSize: 13, color: colors.textMuted, lineHeight: 1.45 },
+  actions: { display: 'flex', justifyContent: 'flex-start', marginTop: 24 },
   ok: { background: 'rgba(34,197,94,0.15)', color: colors.green, padding: 12, borderRadius: 8, marginBottom: 16 },
   error: { background: colors.redDim, color: colors.red, padding: 12, borderRadius: 8, marginBottom: 16 },
 }

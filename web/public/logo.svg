@@ -2,7 +2,7 @@
   <defs>
     <linearGradient id="hexGradient" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#3B82F6"/>
-      <stop offset="100%" stop-color="#2DD4BF"/>
+      <stop offset="100%" stop-color="#2AF0C8"/>
     </linearGradient>
 
     <linearGradient id="blueArc" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -27,7 +27,7 @@
 
     <linearGradient id="needle" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#22D3EE"/>
-      <stop offset="100%" stop-color="#2DD4BF"/>
+      <stop offset="100%" stop-color="#2AF0C8"/>
     </linearGradient>
   </defs>
 
@@ -90,5 +90,5 @@
     cx="256"
     cy="256"
     r="28"
-    fill="#2DD4BF"/>
+    fill="#2AF0C8"/>
 </svg>

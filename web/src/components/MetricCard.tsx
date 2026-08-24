@@ -1,4 +1,4 @@
-import { colors } from '../theme'
+import { colors, fonts, radius } from '../theme'
 
 export default function MetricCard({
   label,
@@ -23,28 +23,32 @@ export default function MetricCard({
     <div style={{
       background: colors.card,
       border: `1px solid ${colors.border}`,
-      borderRadius: colors.radius,
-      padding: 24,
+      borderRadius: radius.md,
+      padding: '16px 18px',
     }}>
       <div style={{
-        fontSize: 12,
-        fontWeight: 500,
+        fontSize: 13,
+        fontWeight: 600,
         color: colors.textMuted,
-        marginBottom: 10,
+        marginBottom: 8,
+        letterSpacing: '0.04em',
+        textTransform: 'uppercase',
       }}>
         {label}
       </div>
       <div style={{
-        fontSize: 28,
-        fontWeight: 700,
+        fontSize: 26,
+        fontWeight: 600,
         color: accentColor,
-        lineHeight: 1.1,
+        lineHeight: 1.15,
         letterSpacing: '-0.02em',
+        fontFamily: fonts.mono,
+        fontVariantNumeric: 'tabular-nums',
       }}>
         {value}
       </div>
       {sub && (
-        <div style={{ fontSize: 12, color: colors.textMuted, marginTop: 8 }}>
+        <div style={{ fontSize: 14, color: colors.textMuted, marginTop: 6 }}>
           {sub}
         </div>
       )}

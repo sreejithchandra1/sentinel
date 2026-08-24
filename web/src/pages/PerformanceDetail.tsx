@@ -4,12 +4,17 @@ import {
   Area, AreaChart, CartesianGrid, Legend, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { api, PerformanceResult, PerformanceStats, PerformanceTarget } from '../api'
-import { ColGroup, ResizableTh, useColumnResize } from '../components/ColumnResize'
+import { ColGroup, ResizableTh, useColumnResize, useTableSort } from '../components/ColumnResize'
 import { useAuth } from '../context/AuthContext'
 import DatePicker from '../components/DatePicker'
+import PerformanceForm from './PerformanceForm'
 import MetricCard from '../components/MetricCard'
 import NextCheckCountdown from '../components/NextCheckCountdown'
-import { colors } from '../theme'
+import PageHeader from '../components/PageHeader'
+import Panel from '../components/Panel'
+import SegmentedTabs from '../components/SegmentedTabs'
+import { chartGridStroke, chartTick, chartTooltipLabel, chartTooltipStyle } from '../chartTheme'
+import { colors, radius } from '../theme'
 import { useAdaptivePoll } from '../utils/poll'
 
 export default function PerformanceDetail() {
@@ -18,6 +23,7 @@ export default function PerformanceDetail() {
   const [target, setTarget] = useState<PerformanceTarget | null>(null)
   const [stats, setStats] = useState<PerformanceStats | null>(null)
   const [period, setPeriod] = useState('24h')
+  const [editing, setEditing] = useState(false)
   const periodRef = useRef(period)
   periodRef.current = period
 
@@ -49,31 +55,40 @@ export default function PerformanceDetail() {
 
   return (
     <div className="page">
-      <div style={styles.header}>
-        <div>
-          <Link to="/performance" style={styles.back}>← Performance</Link>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '8px 0 4px' }}>
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>{target.name}</h1>
-            {target.last_status !== 'up' && target.last_status !== 'unknown' && (
-              <span style={{
-                color: colors.yellow, background: colors.yellowDim,
-                padding: '4px 10px', borderRadius: 999, fontSize: 11, fontWeight: 600,
-              }}>
-                Slow
-              </span>
-            )}
-          </div>
-          <div style={{ color: colors.textMuted, fontSize: 14 }}>{target.url}</div>
-        </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <select value={period} onChange={e => setPeriod(e.target.value)} className="input" style={{ width: 'auto', padding: '8px 14px' }}>
-            <option value="24h">Last 24 hours</option>
-            <option value="7d">Last 7 days</option>
-            <option value="30d">Last 30 days</option>
-          </select>
-          {isAdmin && <Link to={`/performance/targets/${id}/edit`} className="btn">Edit</Link>}
-        </div>
-      </div>
+      <PageHeader
+        title={target.name}
+        badges={
+          target.last_status !== 'up' && target.last_status !== 'unknown' ? (
+            <span style={{
+              color: colors.yellow, background: colors.yellowDim,
+              padding: '4px 8px', borderRadius: radius.sm, fontSize: 12, fontWeight: 600,
+            }}>
+              Slow
+            </span>
+          ) : undefined
+        }
+        subtitle={
+          <>
+            <Link to="/performance" style={styles.back}>← Performance</Link>
+            <span style={{ marginLeft: 10 }}>{target.url}</span>
+          </>
+        }
+        actions={
+          <>
+            <SegmentedTabs
+              label="Chart period"
+              value={period}
+              onChange={setPeriod}
+              tabs={[
+                { id: '24h', label: '24h' },
+                { id: '7d', label: '7d' },
+                { id: '30d', label: '30d' },
+              ]}
+            />
+            {isAdmin && <button type="button" className="btn" onClick={() => setEditing(true)}>Edit</button>}
+          </>
+        }
+      />
 
       <NextCheckCountdown
         target={target}
@@ -90,23 +105,23 @@ export default function PerformanceDetail() {
         </div>
       )}
 
-      <div style={styles.chartCard}>
-        <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 600 }}>Response Time</h3>
+      <Panel style={{ marginBottom: 20 }}>
+        <h3 className="panel-title">Response Time</h3>
         <div style={{ height: 300 }}>
           {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="svcGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={colors.brand} stopOpacity={0.4} />
+                    <stop offset="0%" stopColor={colors.brand} stopOpacity={0.28} />
                     <stop offset="100%" stopColor={colors.brand} stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid stroke={colors.border} strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="time" tick={{ fill: colors.textMuted, fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis unit="ms" tick={{ fill: colors.textMuted, fontSize: 11 }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ background: colors.card, border: `1px solid ${colors.border}`, borderRadius: 8, color: colors.text }} />
-                <ReferenceLine y={target.slow_threshold_ms} stroke={colors.yellow} strokeDasharray="4 4" label={{ value: 'SLA', fill: colors.yellow, fontSize: 11 }} />
+                <CartesianGrid stroke={chartGridStroke} vertical={false} />
+                <XAxis dataKey="time" tick={chartTick} axisLine={false} tickLine={false} />
+                <YAxis unit="ms" tick={chartTick} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={chartTooltipStyle} labelStyle={chartTooltipLabel} />
+                <ReferenceLine y={target.slow_threshold_ms} stroke={colors.yellow} strokeDasharray="4 4" label={{ value: 'SLA', fill: colors.yellow, fontSize: 12 }} />
                 <Area type="monotone" dataKey="ms" stroke={colors.brand} fill="url(#svcGrad)" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
@@ -114,19 +129,19 @@ export default function PerformanceDetail() {
             <div style={styles.empty}>Collecting latency data…</div>
           )}
         </div>
-      </div>
+      </Panel>
 
       {chartData.some(p => p.dns > 0 || p.ttfb > 0) && (
-        <div style={styles.chartCard}>
-          <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 600 }}>Timing Breakdown</h3>
+        <Panel style={{ marginBottom: 20 }}>
+          <h3 className="panel-title">Timing Breakdown</h3>
           <div style={{ height: 280 }}>
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData}>
-                <CartesianGrid stroke={colors.border} strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="time" tick={{ fill: colors.textMuted, fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis unit="ms" tick={{ fill: colors.textMuted, fontSize: 11 }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ background: colors.card, border: `1px solid ${colors.border}`, borderRadius: 8, color: colors.text }} />
-                <Legend wrapperStyle={{ fontSize: 12, color: colors.textMuted }} />
+                <CartesianGrid stroke={chartGridStroke} vertical={false} />
+                <XAxis dataKey="time" tick={chartTick} axisLine={false} tickLine={false} />
+                <YAxis unit="ms" tick={chartTick} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={chartTooltipStyle} labelStyle={chartTooltipLabel} />
+                <Legend wrapperStyle={{ fontSize: 13, color: colors.textMuted }} />
                 <Area type="monotone" dataKey="dns" stackId="1" stroke="#58a6ff" fill="#58a6ff" fillOpacity={0.6} name="DNS" />
                 <Area type="monotone" dataKey="tcp" stackId="1" stroke="#bc8cff" fill="#bc8cff" fillOpacity={0.6} name="TCP" />
                 <Area type="monotone" dataKey="tls" stackId="1" stroke="#f778ba" fill="#f778ba" fillOpacity={0.6} name="TLS" />
@@ -135,11 +150,22 @@ export default function PerformanceDetail() {
               </AreaChart>
             </ResponsiveContainer>
           </div>
-        </div>
+        </Panel>
       )}
 
       {id && (
         <SLABreachLog targetId={id} slaMs={target.slow_threshold_ms} />
+      )}
+
+      {editing && id && (
+        <PerformanceForm
+          targetId={id}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false)
+            load()
+          }}
+        />
       )}
     </div>
   )
@@ -155,6 +181,16 @@ function SLABreachLog({ targetId, slaMs }: { targetId: string; slaMs: number }) 
   const [loading, setLoading] = useState(true)
   const tableRef = useRef<HTMLTableElement>(null)
   const { widths, startResize, autoFit } = useColumnResize('sla-log', 6)
+  const sortValue = useCallback((r: PerformanceResult, key: string) => {
+    if (key === 'time') return r.checked_at
+    if (key === 'status') return r.status
+    if (key === 'total') return r.response_time_ms
+    if (key === 'over') return Math.max(0, r.response_time_ms - slaMs)
+    if (key === 'ttfb') return r.ttfb_ms ?? null
+    if (key === 'dns') return r.dns_ms ?? null
+    return null
+  }, [slaMs])
+  const { sorted, header } = useTableSort(items, sortValue)
 
   useEffect(() => {
     setPage(0)
@@ -191,15 +227,15 @@ function SLABreachLog({ targetId, slaMs }: { targetId: string; slaMs: number }) 
   const to = Math.min(total, (page + 1) * PAGE_SIZE)
 
   return (
-    <div style={styles.chartCard}>
+    <Panel>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
         <div>
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>SLA Breaches</h3>
-          <div style={{ marginTop: 4, fontSize: 13, color: colors.textMuted }}>
+          <h3 style={{ margin: 0, fontSize: 17, fontWeight: 600 }}>SLA Breaches</h3>
+          <div style={{ marginTop: 4, fontSize: 14, color: colors.textMuted }}>
             Probes slower than {slaMs > 0 ? `${slaMs} ms` : 'SLA'}
           </div>
         </div>
-        <span style={{ fontSize: 13, color: colors.textMuted }}>
+        <span style={{ fontSize: 14, color: colors.textMuted }}>
           {total === 0
             ? (date ? 'No breaches on this day' : 'No SLA breaches yet')
             : `Showing ${from}–${to} of ${total}`}
@@ -216,40 +252,40 @@ function SLABreachLog({ targetId, slaMs }: { targetId: string; slaMs: number }) 
       </div>
 
       <div className="data-table-wrap">
-        <table ref={tableRef} className="data-table" style={styles.table}>
+        <table ref={tableRef} className="data-table">
           <ColGroup widths={widths} />
           <thead>
             <tr>
-              <ResizableTh index={0} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Time</ResizableTh>
-              <ResizableTh index={1} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Status</ResizableTh>
-              <ResizableTh index={2} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Total</ResizableTh>
-              <ResizableTh index={3} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Over SLA</ResizableTh>
-              <ResizableTh index={4} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>TTFB</ResizableTh>
-              <ResizableTh index={5} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>DNS</ResizableTh>
+              <ResizableTh index={0} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('time')}>Time</ResizableTh>
+              <ResizableTh index={1} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('status')}>Status</ResizableTh>
+              <ResizableTh index={2} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('total')}>Total</ResizableTh>
+              <ResizableTh index={3} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('over')}>Over SLA</ResizableTh>
+              <ResizableTh index={4} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('ttfb')}>TTFB</ResizableTh>
+              <ResizableTh index={5} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('dns')}>DNS</ResizableTh>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} style={{ ...styles.td, color: colors.textMuted }}>Loading…</td>
+                <td colSpan={6} style={{ color: colors.textMuted }}>Loading…</td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ ...styles.td, color: colors.textMuted }}>
+                <td colSpan={6} style={{ color: colors.textMuted }}>
                   {date ? 'No SLA breaches for this date.' : 'No probes have exceeded the SLA yet.'}
                 </td>
               </tr>
             ) : (
-              items.map(r => {
+              sorted.map(r => {
                 const over = Math.max(0, r.response_time_ms - slaMs)
                 return (
-                  <tr key={r.id}>
-                    <td style={styles.td}>{new Date(r.checked_at).toLocaleString()}</td>
-                    <td style={{ ...styles.td, color: colors.yellow, fontWeight: 600 }}>Slow</td>
-                    <td style={{ ...styles.td, color: colors.yellow }}>{r.response_time_ms} ms</td>
-                    <td style={{ ...styles.td, color: colors.yellow }}>+{over} ms</td>
-                    <td style={styles.td}>{r.ttfb_ms != null ? `${r.ttfb_ms} ms` : '—'}</td>
-                    <td style={styles.td}>{r.dns_ms != null ? `${r.dns_ms} ms` : '—'}</td>
+                  <tr key={r.id} className="row-warn">
+                    <td className="num">{new Date(r.checked_at).toLocaleString()}</td>
+                    <td style={{ color: colors.yellow, fontWeight: 600 }}>Slow</td>
+                    <td className="num" style={{ color: colors.yellow }}>{r.response_time_ms} ms</td>
+                    <td className="num" style={{ color: colors.yellow }}>+{over} ms</td>
+                    <td className="num">{r.ttfb_ms != null ? `${r.ttfb_ms} ms` : '—'}</td>
+                    <td className="num">{r.dns_ms != null ? `${r.dns_ms} ms` : '—'}</td>
                   </tr>
                 )
               })
@@ -259,23 +295,21 @@ function SLABreachLog({ targetId, slaMs }: { targetId: string; slaMs: number }) 
       </div>
 
       {total > PAGE_SIZE && (
-        <div style={styles.pager}>
+        <div className="table-pager">
           <button
             type="button"
-            className="btn"
-            style={styles.pagerBtn}
+            className="btn btn-sm"
             disabled={page <= 0 || loading}
             onClick={() => setPage(p => Math.max(0, p - 1))}
           >
             Previous
           </button>
-          <span style={{ fontSize: 13, color: colors.textMuted }}>
+          <span className="num" style={{ fontSize: 13, color: colors.textMuted }}>
             Page {page + 1} of {totalPages}
           </span>
           <button
             type="button"
-            className="btn"
-            style={styles.pagerBtn}
+            className="btn btn-sm"
             disabled={page + 1 >= totalPages || loading}
             onClick={() => setPage(p => p + 1)}
           >
@@ -283,43 +317,15 @@ function SLABreachLog({ targetId, slaMs }: { targetId: string; slaMs: number }) 
           </button>
         </div>
       )}
-    </div>
+    </Panel>
   )
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  header: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-    marginBottom: 24, paddingBottom: 20, borderBottom: `1px solid ${colors.border}`,
-  },
-  back: { color: colors.textMuted, fontSize: 13, textDecoration: 'none' },
-  chartCard: {
-    background: colors.card, border: `1px solid ${colors.border}`,
-    borderRadius: 12, padding: '20px 24px', marginBottom: 20,
-  },
+  back: { color: colors.textMuted, fontSize: 14, textDecoration: 'none' },
   empty: { color: colors.textMuted, textAlign: 'center', paddingTop: 120 },
   filterBar: {
     display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16,
   },
-  resetBtn: { padding: '8px 12px', fontSize: 13 },
-  table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
-  th: {
-    textAlign: 'left', padding: '10px 12px', borderBottom: `1px solid ${colors.border}`,
-    color: colors.textMuted, fontWeight: 600, fontSize: 12, textTransform: 'uppercase',
-  },
-  td: { padding: '12px', borderBottom: `1px solid ${colors.border}` },
-  pager: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 16,
-    paddingTop: 12,
-    borderTop: `1px solid ${colors.border}`,
-  },
-  pagerBtn: {
-    minHeight: 36,
-    padding: '0 14px',
-    fontSize: 13,
-  },
+  resetBtn: { padding: '8px 12px', fontSize: 14, minHeight: 36 },
 }

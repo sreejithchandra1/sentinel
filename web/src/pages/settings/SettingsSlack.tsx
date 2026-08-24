@@ -66,7 +66,7 @@ export default function SettingsSlack() {
         <Link to="/settings/notifications" style={styles.back}>← Notifications</Link>
       </div>
       {message && <div style={styles.ok}>{message}</div>}
-      {error && <div style={styles.error}>{error}</div>}
+      {error && <div style={styles.error} role="alert">{error}</div>}
 
       <form onSubmit={handleSave} style={styles.card}>
         <h3 style={styles.title}>Slack</h3>
@@ -95,7 +95,7 @@ export default function SettingsSlack() {
             onChange={e => setEventsText(e.target.value)}
             placeholder="all, DOWN, RECOVERY, SLOW, NORMAL"
           />
-          <p style={{ color: colors.textMuted, fontSize: 12, margin: '8px 0 0' }}>
+          <p style={{ color: colors.textMuted, fontSize: 13, margin: '8px 0 0' }}>
             Comma-separated. Use <code>all</code> or specific events like DOWN, RECOVERY, SLOW.
           </p>
         </label>
@@ -123,14 +123,14 @@ export default function SettingsSlack() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  back: { color: colors.textMuted, fontSize: 13, textDecoration: 'none' },
+  back: { color: colors.textMuted, fontSize: 14, textDecoration: 'none' },
   card: {
     background: colors.card, border: `1px solid ${colors.border}`,
-    borderRadius: 12, padding: '24px 28px', maxWidth: 640,
+    borderRadius: 10, padding: '24px 28px', maxWidth: 640,
   },
-  title: { margin: '0 0 8px', fontSize: 16, fontWeight: 600 },
-  desc: { color: colors.textMuted, fontSize: 14, margin: '0 0 20px', lineHeight: 1.45 },
-  check: { display: 'flex', gap: 10, alignItems: 'center', fontSize: 14, color: colors.textMuted },
+  title: { margin: '0 0 8px', fontSize: 17, fontWeight: 600 },
+  desc: { color: colors.textMuted, fontSize: 15, margin: '0 0 20px', lineHeight: 1.45 },
+  check: { display: 'flex', gap: 10, alignItems: 'center', fontSize: 15, color: colors.textMuted },
   ok: {
     background: colors.greenDim, color: colors.green, padding: 12,
     borderRadius: 8, marginBottom: 16, border: `1px solid rgba(34,197,94,0.3)`,

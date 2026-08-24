@@ -112,7 +112,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-    fontSize: 14,
+    fontSize: 16,
     color: colors.textMuted,
   },
   label: { fontWeight: 500, flexShrink: 0 },
@@ -124,6 +124,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   reset: {
     padding: '8px 12px',
-    fontSize: 13,
+    fontSize: 15,
   },
 }

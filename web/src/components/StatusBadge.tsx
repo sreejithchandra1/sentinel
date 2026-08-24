@@ -1,4 +1,4 @@
-import { colors } from '../theme'
+import { colors, radius } from '../theme'
 
 const labels: Record<string, string> = {
   up: 'Healthy',
@@ -31,12 +31,13 @@ export default function StatusBadge({ status }: { status: string }) {
       gap: 6,
       background: c.bg,
       color: c.text,
-      padding: '6px 12px',
-      borderRadius: 999,
-      fontSize: 12,
+      padding: '4px 8px',
+      borderRadius: radius.sm,
+      fontSize: 13,
       fontWeight: 600,
+      letterSpacing: '0.02em',
     }}>
-      <span style={{ width: 7, height: 7, borderRadius: '50%', background: c.dot }} />
+      <span style={{ width: 6, height: 6, borderRadius: 1, background: c.dot }} />
       {labels[status] || status}
     </span>
   )

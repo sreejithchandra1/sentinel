@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, AuditEntry, AuditMeta } from '../../api'
-import { ColGroup, ResizableTh, useColumnResize } from '../../components/ColumnResize'
+import { ColGroup, ResizableTh, useColumnResize, useTableSort } from '../../components/ColumnResize'
 import DatePicker from '../../components/DatePicker'
 import { colors } from '../../theme'
 
@@ -30,6 +30,15 @@ export default function SettingsAudit() {
   const [loading, setLoading] = useState(true)
   const tableRef = useRef<HTMLTableElement>(null)
   const { widths, startResize, autoFit } = useColumnResize('audit', 5)
+  const sortValue = useCallback((e: AuditEntry, key: string) => {
+    if (key === 'time') return e.created_at
+    if (key === 'actor') return e.actor
+    if (key === 'action') return e.action
+    if (key === 'resource') return e.resource
+    if (key === 'detail') return e.detail || ''
+    return null
+  }, [])
+  const { sorted, header } = useTableSort(entries, sortValue)
 
   useEffect(() => {
     api.listAuditMeta().then(setMeta).catch(() => {})
@@ -141,7 +150,7 @@ export default function SettingsAudit() {
         )}
       </div>
 
-      {error && <div style={styles.error}>{error}</div>}
+      {error && <div style={styles.error} role="alert">{error}</div>}
 
       {entries.length === 0 && !loading ? (
         <p style={styles.empty}>
@@ -154,11 +163,11 @@ export default function SettingsAudit() {
               <ColGroup widths={widths} />
               <thead>
                 <tr>
-                  <ResizableTh index={0} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Time</ResizableTh>
-                  <ResizableTh index={1} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Actor</ResizableTh>
-                  <ResizableTh index={2} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Action</ResizableTh>
-                  <ResizableTh index={3} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Resource</ResizableTh>
-                  <ResizableTh index={4} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Detail</ResizableTh>
+                  <ResizableTh index={0} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('time')}>Time</ResizableTh>
+                  <ResizableTh index={1} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('actor')}>Actor</ResizableTh>
+                  <ResizableTh index={2} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('action')}>Action</ResizableTh>
+                  <ResizableTh index={3} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('resource')}>Resource</ResizableTh>
+                  <ResizableTh index={4} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('detail')}>Detail</ResizableTh>
                 </tr>
               </thead>
               <tbody>
@@ -167,7 +176,7 @@ export default function SettingsAudit() {
                     <td colSpan={5} style={{ ...styles.td, color: colors.textMuted }}>Loading…</td>
                   </tr>
                 ) : (
-                  entries.map(e => (
+                  sorted.map(e => (
                     <tr key={e.id}>
                       <td style={styles.td}>{new Date(e.created_at).toLocaleString()}</td>
                       <td style={styles.td}>{e.actor}</td>
@@ -193,7 +202,7 @@ export default function SettingsAudit() {
               >
                 Previous
               </button>
-              <span style={{ fontSize: 13, color: colors.textMuted }}>
+              <span style={{ fontSize: 14, color: colors.textMuted }}>
                 Page {page + 1} of {totalPages}
               </span>
               <button
@@ -217,12 +226,12 @@ const styles: Record<string, React.CSSProperties> = {
   card: {
     background: colors.card,
     border: `1px solid ${colors.border}`,
-    borderRadius: 12,
+    borderRadius: 10,
     padding: 28,
   },
   header: { marginBottom: 16 },
-  title: { margin: '0 0 8px', fontSize: 18, fontWeight: 600 },
-  desc: { color: colors.textMuted, fontSize: 14, margin: 0 },
+  title: { margin: '0 0 8px', fontSize: 19, fontWeight: 600 },
+  desc: { color: colors.textMuted, fontSize: 15, margin: 0 },
   filterBar: {
     display: 'flex',
     alignItems: 'center',
@@ -232,13 +241,13 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '14px 16px',
     background: colors.bg,
     border: `1px solid ${colors.border}`,
-    borderRadius: 12,
+    borderRadius: 10,
   },
   field: {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-    fontSize: 14,
+    fontSize: 15,
     color: colors.textMuted,
   },
   label: { fontWeight: 500, flexShrink: 0 },
@@ -248,12 +257,12 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '0 12px',
     cursor: 'pointer',
   },
-  reset: { padding: '8px 12px', fontSize: 13 },
+  reset: { padding: '8px 12px', fontSize: 14 },
   tableWrap: {},
   table: {
     width: '100%',
     borderCollapse: 'collapse',
-    fontSize: 14,
+    fontSize: 15,
   },
   th: {
     textAlign: 'left',
@@ -261,7 +270,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderBottom: `1px solid ${colors.border}`,
     color: colors.textMuted,
     fontWeight: 600,
-    fontSize: 12,
+    fontSize: 13,
     textTransform: 'uppercase',
     letterSpacing: '0.04em',
     whiteSpace: 'nowrap',
@@ -274,12 +283,12 @@ const styles: Record<string, React.CSSProperties> = {
   },
   action: {
     textTransform: 'uppercase',
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: 700,
     color: colors.textMuted,
     letterSpacing: '0.04em',
   },
-  empty: { color: colors.textMuted, fontSize: 14, margin: '12px 0 0' },
+  empty: { color: colors.textMuted, fontSize: 15, margin: '12px 0 0' },
   error: { background: colors.redDim, color: colors.red, padding: 12, borderRadius: 8, marginBottom: 16 },
   pager: {
     display: 'flex',
@@ -289,5 +298,5 @@ const styles: Record<string, React.CSSProperties> = {
     paddingTop: 16,
     marginTop: 4,
   },
-  pagerBtn: { padding: '8px 14px', fontSize: 13 },
+  pagerBtn: { padding: '8px 14px', fontSize: 14 },
 }

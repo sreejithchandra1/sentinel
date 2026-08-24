@@ -40,14 +40,14 @@ export default function StatusPage() {
             {up} of {(data.monitors || []).length} services operational
           </p>
         </header>
-        <div style={styles.list}>
+        <div style={styles.list} role="list">
           {(data.monitors || []).length === 0 ? (
             <div style={{ ...styles.row, justifyContent: 'center', color: colors.textMuted }}>
               No monitors are published on this status page yet.
             </div>
           ) : (
             (data.monitors || []).map(m => (
-              <div key={m.id} style={styles.row}>
+              <div key={m.id} className="status-row" style={styles.row} role="listitem">
                 <div>
                   <div style={styles.name}>{m.name}</div>
                   {m.url && <div style={styles.url}>{m.url}</div>}
@@ -70,14 +70,13 @@ const styles: Record<string, React.CSSProperties> = {
   center: { textAlign: 'center', color: colors.textMuted, paddingTop: 80 },
   container: { maxWidth: 720, margin: '0 auto' },
   header: { textAlign: 'center', marginBottom: 40 },
-  title: { fontSize: 32, fontWeight: 700, margin: '0 0 8px' },
+  title: { fontSize: 24, fontWeight: 600, margin: '0 0 8px', letterSpacing: '-0.02em' },
   subtitle: { color: colors.textMuted, margin: 0 },
   list: { display: 'grid', gap: 12 },
   row: {
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    background: colors.card, border: `1px solid ${colors.border}`, borderRadius: 12, padding: '20px 24px',
+    background: colors.card, border: `1px solid ${colors.border}`, borderRadius: 10, padding: '18px 20px',
   },
-  name: { fontWeight: 600, fontSize: 16 },
-  url: { color: colors.textMuted, fontSize: 13, marginTop: 4 },
-  meta: { color: colors.textDim, fontSize: 12, marginTop: 6 },
+  name: { fontWeight: 600, fontSize: 17 },
+  url: { color: colors.textMuted, fontSize: 14, marginTop: 4 },
+  meta: { color: colors.textDim, fontSize: 13, marginTop: 6 },
 }

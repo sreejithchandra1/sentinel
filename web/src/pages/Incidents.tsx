@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, Incident, Monitor } from '../api'
-import { ColGroup, ResizableTh, useColumnResize } from '../components/ColumnResize'
+import { ColGroup, ResizableTh, useColumnResize, useTableSort } from '../components/ColumnResize'
 import IncidentFilters, { IncidentFilterValues } from '../components/IncidentFilters'
 import IncidentStatus from '../components/IncidentStatus'
+import PageHeader from '../components/PageHeader'
+import Panel from '../components/Panel'
 import { colors } from '../theme'
 
 const PAGE_SIZE = 20
@@ -26,6 +28,16 @@ export default function Incidents() {
   const [loading, setLoading] = useState(true)
   const tableRef = useRef<HTMLTableElement>(null)
   const { widths, startResize, autoFit } = useColumnResize('incidents', 6)
+  const sortValue = useCallback((inc: Incident, key: string) => {
+    if (key === 'monitor') return inc.monitor_name || inc.monitor_id
+    if (key === 'type') return inc.type
+    if (key === 'message') return inc.message || ''
+    if (key === 'started') return inc.started_at
+    if (key === 'resolved') return inc.resolved_at || ''
+    if (key === 'status') return inc.resolved_at ? 'resolved' : 'open'
+    return null
+  }, [])
+  const { sorted, header } = useTableSort(incidents, sortValue)
 
   useEffect(() => {
     api.monitors().then(setMonitors).catch(() => {})
@@ -78,94 +90,91 @@ export default function Incidents() {
 
   return (
     <div className="page">
-      <div style={styles.topBar}>
-        <div>
-          <h1 className="page-title">Incidents</h1>
-          <p className="page-subtitle" style={{ marginBottom: 0 }}>
-            {openCount} open · {total} total
-            {total > 0 ? ` · Showing ${from}–${to}` : ''}
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Incidents"
+        subtitle={`${openCount} open · ${total} total${total > 0 ? ` · Showing ${from}–${to}` : ''}`}
+      />
 
-      <div style={styles.filterCard}>
+      <Panel style={{ padding: '14px 16px', marginBottom: 16 }}>
         <IncidentFilters
           value={filters}
           onChange={setFilters}
           monitors={monitorOptions}
           showMonitor
         />
-      </div>
+      </Panel>
 
-      {error && <div style={styles.error}>{error}</div>}
+      {error && <div className="flash-error" role="alert">{error}</div>}
 
       {incidents.length === 0 && !loading ? (
-        <div style={styles.empty}>
+        <div className="empty-state">
           {filters.date || filters.status || filters.type || filters.monitorId
             ? 'No incidents match these filters.'
             : 'No incidents recorded yet.'}
         </div>
       ) : (
-        <div style={styles.tableWrap}>
+        <Panel padded={false}>
           <div className="data-table-wrap">
-          <table ref={tableRef} className="data-table" style={styles.table}>
+          <table ref={tableRef} className="data-table">
             <ColGroup widths={widths} />
             <thead>
               <tr>
-                <ResizableTh index={0} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Monitor</ResizableTh>
-                <ResizableTh index={1} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Type</ResizableTh>
-                <ResizableTh index={2} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Message</ResizableTh>
-                <ResizableTh index={3} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Started</ResizableTh>
-                <ResizableTh index={4} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Resolved</ResizableTh>
-                <ResizableTh index={5} style={styles.th} startResize={startResize} autoFit={autoFit} tableRef={tableRef}>Status</ResizableTh>
+                <ResizableTh index={0} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('monitor')}>Monitor</ResizableTh>
+                <ResizableTh index={1} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('type')}>Type</ResizableTh>
+                <ResizableTh index={2} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('message')}>Message</ResizableTh>
+                <ResizableTh index={3} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('started')}>Started</ResizableTh>
+                <ResizableTh index={4} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('resolved')}>Resolved</ResizableTh>
+                <ResizableTh index={5} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('status')}>Status</ResizableTh>
               </tr>
             </thead>
             <tbody>
               {loading && incidents.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ ...styles.td, padding: 24, color: colors.textMuted }}>Loading…</td>
+                  <td colSpan={6} style={{ padding: 24, color: colors.textMuted }}>Loading…</td>
                 </tr>
               ) : (
-                incidents.map(inc => (
-                  <tr key={inc.id}>
-                    <td style={styles.td}>
+                sorted.map(inc => {
+                  const open = !inc.resolved_at
+                  const warn = inc.type === 'slow' || inc.type === 'ssl_expiry'
+                  return (
+                  <tr key={inc.id} className={open ? (warn ? 'row-warn' : 'row-down') : undefined}>
+                    <td>
                       <Link to={`/monitors/${inc.monitor_id}`} style={styles.link}>
                         {inc.monitor_name || inc.monitor_id}
                       </Link>
                     </td>
-                    <td style={styles.td}><span style={styles.type}>{inc.type}</span></td>
-                    <td style={{ ...styles.td, color: colors.textMuted }}>{inc.message || '—'}</td>
-                    <td style={styles.td}>{new Date(inc.started_at).toLocaleString()}</td>
-                    <td style={{ ...styles.td, color: colors.textMuted }}>
+                    <td><span style={styles.type}>{inc.type}</span></td>
+                    <td style={{ color: colors.textMuted }}>{inc.message || '—'}</td>
+                    <td className="num">{new Date(inc.started_at).toLocaleString()}</td>
+                    <td className="num" style={{ color: colors.textMuted }}>
                       {inc.resolved_at ? new Date(inc.resolved_at).toLocaleString() : '—'}
                     </td>
-                    <td style={styles.td}>
+                    <td>
                       <IncidentStatus incident={inc} />
                     </td>
                   </tr>
-                ))
+                  )
+                })
               )}
             </tbody>
           </table>
           </div>
           {total > PAGE_SIZE && (
-            <div style={styles.pager}>
+            <div className="table-pager">
               <button
                 type="button"
-                className="btn"
-                style={styles.pagerBtn}
+                className="btn btn-sm"
                 disabled={page <= 0 || loading}
                 onClick={() => setPage(p => Math.max(0, p - 1))}
               >
                 Previous
               </button>
-              <span style={{ fontSize: 13, color: colors.textMuted }}>
+              <span className="num" style={{ fontSize: 13, color: colors.textMuted }}>
                 Page {page + 1} of {totalPages}
               </span>
               <button
                 type="button"
-                className="btn"
-                style={styles.pagerBtn}
+                className="btn btn-sm"
                 disabled={page + 1 >= totalPages || loading}
                 onClick={() => setPage(p => p + 1)}
               >
@@ -173,51 +182,13 @@ export default function Incidents() {
               </button>
             </div>
           )}
-        </div>
+        </Panel>
       )}
     </div>
   )
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  topBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 16, flexWrap: 'wrap' },
-  filterCard: {
-    background: colors.card,
-    border: `1px solid ${colors.border}`,
-    borderRadius: 12,
-    padding: '14px 16px',
-    marginBottom: 20,
-  },
-  tableWrap: { background: colors.card, border: `1px solid ${colors.border}`, borderRadius: 12 },
-  table: { width: '100%', fontSize: 14 },
-  th: {
-    textAlign: 'left',
-    padding: '12px 16px',
-    borderBottom: `1px solid ${colors.border}`,
-    color: colors.textMuted,
-    fontWeight: 600,
-    fontSize: 12,
-    textTransform: 'uppercase',
-    letterSpacing: '0.04em',
-    whiteSpace: 'nowrap',
-  },
-  td: {
-    textAlign: 'left',
-    padding: '12px 16px',
-    borderBottom: `1px solid ${colors.border}`,
-    verticalAlign: 'middle',
-  },
   link: { color: colors.brand, textDecoration: 'none', fontWeight: 500 },
-  type: { textTransform: 'uppercase', fontSize: 11, fontWeight: 700, color: colors.textMuted },
-  empty: { textAlign: 'center', padding: 48, color: colors.textMuted, background: colors.card, borderRadius: 12, border: `1px solid ${colors.border}` },
-  error: { background: colors.redDim, color: colors.red, padding: 12, borderRadius: 8, marginBottom: 16 },
-  pager: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    padding: '12px 16px',
-    borderTop: `1px solid ${colors.border}`,
-  },
-  pagerBtn: { padding: '8px 14px', fontSize: 13 },
+  type: { textTransform: 'uppercase', fontSize: 12, fontWeight: 700, color: colors.textMuted, letterSpacing: '0.04em' },
 }

@@ -1,6 +1,7 @@
-import { NavLink, Outlet, Navigate, useLocation } from 'react-router-dom'
+import { Outlet, Navigate, useLocation } from 'react-router-dom'
+import PageHeader from '../../components/PageHeader'
+import SegmentedTabs from '../../components/SegmentedTabs'
 import { useAuth } from '../../context/AuthContext'
-import { colors } from '../../theme'
 
 const allTabs = [
   { path: '/settings/general', label: 'General', platformOnly: true },
@@ -26,7 +27,6 @@ export default function SettingsLayout() {
     return <Navigate to={defaultPath} replace />
   }
 
-  // Legacy redirects
   if (location.pathname === '/settings/smtp') {
     return <Navigate to="/settings/notifications/email" replace />
   }
@@ -41,61 +41,31 @@ export default function SettingsLayout() {
 
   return (
     <div className="page">
-      <h1 className="page-title">Settings</h1>
-      <p className="page-subtitle">
-        {isPlatformAdmin
-          ? 'Configure organization details and alert delivery.'
-          : isAdmin
-            ? 'Manage notifications and API tokens for your account.'
-            : 'Manage API tokens for this account.'}
-      </p>
-
-      <nav style={styles.tabs}>
-        {tabs.map(tab => (
-          <NavLink
-            key={tab.path}
-            to={tab.path}
-            end={tab.path !== '/settings/notifications'}
-            style={({ isActive }) => ({
-              ...styles.tab,
-              ...(isActive || (tab.path === '/settings/notifications' && location.pathname.startsWith('/settings/notifications'))
-                ? styles.tabActive
-                : {}),
-            })}
-          >
-            {tab.label}
-          </NavLink>
-        ))}
-      </nav>
+      <div className="page-sticky">
+        <PageHeader
+          title="Settings"
+          subtitle={
+            isPlatformAdmin
+              ? 'Configure organization details and alert delivery.'
+              : isAdmin
+                ? 'Manage notifications and API tokens for your account.'
+                : 'Manage API tokens for this account.'
+          }
+        />
+        <div className="page-sticky-extra">
+          <SegmentedTabs
+            label="Settings sections"
+            tabs={tabs.map(tab => ({
+              id: tab.path,
+              label: tab.label,
+              to: tab.path,
+              end: tab.path !== '/settings/notifications',
+            }))}
+          />
+        </div>
+      </div>
 
       <Outlet />
     </div>
   )
-}
-
-const styles: Record<string, React.CSSProperties> = {
-  tabs: {
-    display: 'flex',
-    gap: 4,
-    marginBottom: 24,
-    padding: 4,
-    background: colors.card,
-    border: `1px solid ${colors.border}`,
-    borderRadius: 10,
-    width: 'fit-content',
-    flexWrap: 'wrap',
-  },
-  tab: {
-    padding: '8px 18px',
-    borderRadius: 8,
-    fontSize: 13,
-    fontWeight: 500,
-    color: colors.textMuted,
-    textDecoration: 'none',
-    transition: 'background 0.15s, color 0.15s',
-  },
-  tabActive: {
-    background: colors.bgElevated,
-    color: colors.text,
-  },
 }

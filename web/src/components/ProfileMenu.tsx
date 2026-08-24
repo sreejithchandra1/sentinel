@@ -41,8 +41,9 @@ export default function ProfileMenu({ onLogout, collapsed }: { onLogout: () => v
           ...styles.profileBtn,
           ...(collapsed ? styles.profileBtnCollapsed : {}),
         }}
+        aria-haspopup="menu"
         aria-expanded={open}
-        title={displayName}
+        aria-label={displayName}
       >
         <span style={{ ...styles.avatar, ...(collapsed ? styles.avatarCollapsed : {}) }}>{initials}</span>
         {!collapsed && (
@@ -79,7 +80,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 12,
     width: '100%',
     padding: '10px 12px',
-    borderRadius: 12,
+    borderRadius: 8,
     border: 'none',
     background: 'transparent',
     color: colors.text,
@@ -99,18 +100,18 @@ const styles: Record<string, React.CSSProperties> = {
     color: colors.brand,
     display: 'grid',
     placeItems: 'center',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 700,
-    border: `1px solid rgba(20, 184, 166, 0.35)`,
+    border: `1px solid color-mix(in srgb, ${colors.brand} 35%, transparent)`,
   },
   avatarCollapsed: {
     width: 36,
     height: 36,
-    fontSize: 12,
+    fontSize: 13,
   },
   profileInfo: { display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 },
   profileName: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: 600,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -122,7 +123,7 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 4,
     padding: '1px 7px',
     borderRadius: 999,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: 600,
     letterSpacing: '0.02em',
     color: colors.textMuted,
@@ -130,18 +131,18 @@ const styles: Record<string, React.CSSProperties> = {
     border: `1px solid ${colors.border}`,
     lineHeight: 1.4,
   },
-  chevron: { fontSize: 10, color: colors.textMuted, transition: 'transform 0.15s', flexShrink: 0 },
+  chevron: { fontSize: 11, color: colors.textMuted, transition: 'transform 0.15s', flexShrink: 0 },
   menu: {
     position: 'absolute',
     bottom: '100%',
     left: 4,
     right: 4,
     marginBottom: 8,
-    background: colors.bgElevated,
+    background: colors.card,
     border: `1px solid ${colors.border}`,
-    borderRadius: 12,
+    borderRadius: 10,
     overflow: 'hidden',
-    boxShadow: '0 12px 32px rgba(0,0,0,0.45)',
+    boxShadow: 'var(--shadow)',
     zIndex: 20,
   },
   menuCollapsed: {
@@ -153,14 +154,14 @@ const styles: Record<string, React.CSSProperties> = {
   },
   signedIn: {
     padding: '10px 14px 8px',
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textMuted,
     borderBottom: `1px solid ${colors.border}`,
   },
   menuItem: {
     display: 'block',
     padding: '12px 14px',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 500,
     color: colors.text,
     textDecoration: 'none',
@@ -170,7 +171,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'block',
     width: '100%',
     padding: '12px 14px',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 500,
     color: colors.red,
     background: 'transparent',

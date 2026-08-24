@@ -34,13 +34,13 @@ export default function DeleteMonitorButton({
   if (confirming) {
     return (
       <div style={styles.confirmBox}>
-        <span style={{ fontSize: 13, color: colors.text }}>Delete <strong>{name}</strong>?</span>
-        {error && <div style={{ color: colors.red, fontSize: 12 }}>{error}</div>}
+        <span style={{ fontSize: 15, color: colors.text }}>Delete <strong>{name}</strong>?</span>
+        {error && <div style={{ color: colors.red, fontSize: 14 }}>{error}</div>}
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={handleDelete} disabled={deleting} className="btn btn-danger" style={{ fontSize: 13 }}>
+          <button onClick={handleDelete} disabled={deleting} className="btn btn-danger" style={{ fontSize: 15 }}>
             {deleting ? 'Deleting…' : 'Confirm'}
           </button>
-          <button onClick={() => setConfirming(false)} disabled={deleting} className="btn" style={{ fontSize: 13 }}>Cancel</button>
+          <button onClick={() => setConfirming(false)} disabled={deleting} className="btn" style={{ fontSize: 15 }}>Cancel</button>
         </div>
       </div>
     )
@@ -51,7 +51,7 @@ export default function DeleteMonitorButton({
       type="button"
       onClick={() => setConfirming(true)}
       className={variant === 'danger' ? 'btn btn-danger' : 'btn btn-danger'}
-      style={{ fontSize: 13, padding: variant === 'danger' ? '8px 16px' : '6px 12px' }}
+      style={{ fontSize: 15, padding: variant === 'danger' ? '8px 16px' : '6px 12px' }}
     >
       Delete
     </button>

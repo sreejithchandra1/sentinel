@@ -71,7 +71,7 @@ export default function SettingsGeneral() {
   return (
     <>
       {message && <div style={styles.ok}>{message}</div>}
-      {error && <div style={styles.error}>{error}</div>}
+      {error && <div style={styles.error} role="alert">{error}</div>}
 
       <div className="split-panels">
         <form onSubmit={handleSave} style={styles.card}>
@@ -118,14 +118,14 @@ export default function SettingsGeneral() {
 
         <div style={styles.card}>
           <h3 style={styles.cardTitle}>Preview</h3>
-          <p style={{ color: colors.textMuted, fontSize: 14, margin: '0 0 20px' }}>
+          <p style={{ color: colors.textMuted, fontSize: 15, margin: '0 0 20px' }}>
             How your branding appears in the sidebar.
           </p>
           <div style={styles.preview}>
             <AppLogo src={cfg.logo || null} size={32} />
             <div>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>{displayName}</div>
-              {cfg.tagline && <div style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>{cfg.tagline}</div>}
+              <div style={{ fontWeight: 700, fontSize: 17 }}>{displayName}</div>
+              {cfg.tagline && <div style={{ color: colors.textMuted, fontSize: 13, marginTop: 2 }}>{cfg.tagline}</div>}
             </div>
           </div>
         </div>
@@ -157,9 +157,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 const styles: Record<string, React.CSSProperties> = {
   card: {
     background: colors.card, border: `1px solid ${colors.border}`,
-    borderRadius: 12, padding: '24px 28px', minWidth: 0,
+    borderRadius: 10, padding: '24px 28px', minWidth: 0,
   },
-  cardTitle: { margin: '0 0 20px', fontSize: 16, fontWeight: 600 },
+  cardTitle: { margin: '0 0 20px', fontSize: 17, fontWeight: 600 },
   logoRow: { display: 'flex', alignItems: 'center', gap: 16 },
   logoPreview: {
     width: 56, height: 56, borderRadius: 10, objectFit: 'contain',
@@ -169,17 +169,17 @@ const styles: Record<string, React.CSSProperties> = {
     width: 56, height: 56, borderRadius: 10,
     background: `linear-gradient(135deg, ${colors.brand}, ${colors.brandDeep})`,
     color: colors.bg, display: 'grid', placeItems: 'center',
-    fontSize: 22, fontWeight: 700,
+    fontSize: 24, fontWeight: 700,
   },
   logoActions: { display: 'flex', gap: 8, flexWrap: 'wrap' },
-  hint: { color: colors.textMuted, fontSize: 12, margin: '10px 0 0' },
+  hint: { color: colors.textMuted, fontSize: 13, margin: '10px 0 0' },
   preview: {
     display: 'flex', alignItems: 'center', gap: 12,
     padding: '12px 14px', borderRadius: 10,
     background: colors.sidebar, border: `1px solid ${colors.border}`,
   },
   previewLogo: { width: 32, height: 32, borderRadius: 6, objectFit: 'contain' },
-  previewIcon: { color: colors.brand, fontSize: 22, width: 32, textAlign: 'center' },
+  previewIcon: { color: colors.brand, fontSize: 24, width: 32, textAlign: 'center' },
   ok: {
     background: colors.greenDim, color: colors.green, padding: 12,
     borderRadius: 8, marginBottom: 16, border: `1px solid rgba(63,185,80,0.3)`,

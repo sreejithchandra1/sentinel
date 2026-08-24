@@ -85,36 +85,36 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
   }
 
   return (
-    <div style={styles.wrap}>
-      <div style={styles.left}>
+    <div className="auth-split">
+      <div className="auth-split-brand">
         <AppLogo src={brand?.logo} size={48} alt={brand?.company_name || 'Sentinel'} />
         <p style={styles.intro}>INTRODUCING</p>
-        <h1 style={styles.hero}>{brand?.company_name || 'Sentinel'}</h1>
+        <h1 className="auth-hero">{brand?.company_name || 'Sentinel'}</h1>
         <p style={styles.tagline}>{brand?.tagline || 'Self-hosted infrastructure monitoring for websites, ports, SSL, and DNS.'}</p>
       </div>
-      <form onSubmit={mode === 'login' ? (step === 'credentials' ? handleLogin : handleVerifyCode) : handleForgot} style={styles.card}>
-        <h2 style={{ margin: '0 0 4px', fontSize: 20 }}>
+      <form onSubmit={mode === 'login' ? (step === 'credentials' ? handleLogin : handleVerifyCode) : handleForgot} className="auth-split-form">
+        <h2 style={{ margin: '0 0 4px', fontSize: 22 }}>
           {mode === 'login' ? (step === 'credentials' ? 'Sign in' : 'Verify sign-in') : 'Reset password'}
         </h2>
-        <p style={{ color: colors.textMuted, margin: '0 0 24px', fontSize: 14 }}>
+        <p style={{ color: colors.textMuted, margin: '0 0 24px', fontSize: 15 }}>
           {mode === 'login' && step === 'code'
             ? `Enter the verification code sent to ${emailHint || 'your email address'}.`
             : mode === 'login'
             ? 'Access your monitoring dashboard'
             : 'Enter your email address and we will send you a reset link.'}
         </p>
-        {message && <div style={styles.ok}>{message}</div>}
-        {error && <div style={styles.error}>{error}</div>}
+        {message && <div className="flash-ok" role="status">{message}</div>}
+        {error && <div className="flash-error" role="alert">{error}</div>}
         {mode === 'login' ? (
           step === 'credentials' ? (
           <>
             <label className="field">
               <span className="field-label">Username</span>
-              <input className="input" value={username} onChange={e => setUsername(e.target.value)} required />
+              <input className="input" autoComplete="username" value={username} onChange={e => setUsername(e.target.value)} required />
             </label>
             <label className="field" style={{ marginTop: 16 }}>
               <span className="field-label">Password</span>
-              <input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+              <input className="input" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required />
             </label>
             <button type="submit" className="btn btn-primary" style={{ marginTop: 24, width: '100%', justifyContent: 'center', padding: 12 }}>
               Sign in
@@ -130,6 +130,8 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                 onChange={e => setCode(e.target.value.toUpperCase())}
                 required
                 autoFocus
+                autoComplete="one-time-code"
+                inputMode="text"
                 placeholder="Enter 8-character code"
               />
             </label>
@@ -142,7 +144,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
             <button
               type="button"
               className="btn"
-              style={{ marginTop: 12, width: '100%', justifyContent: 'center', fontSize: 13 }}
+              style={{ marginTop: 12, width: '100%', justifyContent: 'center', fontSize: 14 }}
               onClick={() => {
                 setStep('credentials')
                 setChallengeId('')
@@ -156,7 +158,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
           </>
           )
         ) : message ? (
-          <div style={styles.ok}>{message}</div>
+          <div className="flash-ok" role="status">{message}</div>
         ) : (
           <>
             <label className="field">
@@ -171,7 +173,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
         <button
           type="button"
           className="btn"
-          style={{ marginTop: 12, width: '100%', justifyContent: 'center', fontSize: 13 }}
+          style={{ marginTop: 12, width: '100%', justifyContent: 'center', fontSize: 14 }}
           onClick={() => {
             setMode(mode === 'login' ? 'forgot' : 'login')
             setStep('credentials')
@@ -190,30 +192,6 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  wrap: {
-    minHeight: '100vh', display: 'grid', gridTemplateColumns: '1fr 400px',
-    background: colors.bg,
-  },
-  left: {
-    display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8,
-    padding: '48px 64px', background: `linear-gradient(135deg, ${colors.bg} 0%, #0a2e2c 100%)`,
-    borderRight: `1px solid ${colors.border}`,
-  },
-  intro: { margin: '16px 0 0', fontSize: 12, fontWeight: 700, letterSpacing: '0.2em', color: colors.brand },
-  hero: { margin: '8px 0', fontSize: 48, fontWeight: 800, color: colors.text },
+  intro: { margin: '16px 0 0', fontSize: 12, fontWeight: 600, letterSpacing: '0.2em', color: colors.brand, textTransform: 'uppercase' as const },
   tagline: { color: colors.textMuted, fontSize: 16, lineHeight: 1.6, maxWidth: 400 },
-  card: {
-    display: 'flex', flexDirection: 'column', justifyContent: 'center',
-    padding: '48px 40px', background: colors.card,
-  },
-  ok: {
-    background: colors.greenDim, color: colors.green, padding: 10,
-    borderRadius: 8, marginBottom: 16, fontSize: 14,
-    border: `1px solid rgba(63,185,80,0.3)`,
-  },
-  error: {
-    background: colors.redDim, color: colors.red, padding: 10,
-    borderRadius: 8, marginBottom: 16, fontSize: 14,
-    border: `1px solid rgba(248,81,73,0.3)`,
-  },
 }
