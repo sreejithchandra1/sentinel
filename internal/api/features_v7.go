@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -71,6 +72,75 @@ func (s *Server) handleListIncidents(w http.ResponseWriter, r *http.Request) {
 		"limit":  limit,
 		"offset": offset,
 	})
+}
+
+func incidentVisible(user *models.User, tenantID string) bool {
+	if user == nil {
+		return false
+	}
+	if isPlatformAdmin(user) {
+		return true
+	}
+	if tenantID == "" {
+		return false
+	}
+	return canAccessTenant(user, tenantID)
+}
+
+func (s *Server) loadVisibleIncident(w http.ResponseWriter, r *http.Request) *models.IncidentListItem {
+	user := currentUser(r)
+	id := r.PathValue("id")
+	item, tenantID, err := s.store.GetIncident(id)
+	if err != nil {
+		jsonInternal(w, err)
+		return nil
+	}
+	if item == nil || !incidentVisible(user, tenantID) {
+		jsonError(w, http.StatusNotFound, "not found")
+		return nil
+	}
+	return item
+}
+
+func ackActorName(u *models.User) string {
+	if u == nil {
+		return ""
+	}
+	if name := strings.TrimSpace(u.Name); name != "" {
+		return name
+	}
+	return u.Username
+}
+
+func (s *Server) handleGetIncident(w http.ResponseWriter, r *http.Request) {
+	item := s.loadVisibleIncident(w, r)
+	if item == nil {
+		return
+	}
+	jsonOK(w, item)
+}
+
+func (s *Server) handleAcknowledgeIncident(w http.ResponseWriter, r *http.Request) {
+	item := s.loadVisibleIncident(w, r)
+	if item == nil {
+		return
+	}
+	user := currentUser(r)
+	acked, err := s.store.AcknowledgeIncident(item.ID, ackActorName(user), time.Now().UTC())
+	if err != nil {
+		if errors.Is(err, store.ErrIncidentResolved) {
+			jsonError(w, http.StatusConflict, "incident already resolved")
+			return
+		}
+		jsonInternal(w, err)
+		return
+	}
+	if acked == nil {
+		jsonError(w, http.StatusNotFound, "not found")
+		return
+	}
+	_ = s.store.InsertAudit(user.Username, "update", "incident", item.ID)
+	jsonOK(w, acked)
 }
 
 func (s *Server) handleGetWebhooks(w http.ResponseWriter, r *http.Request) {

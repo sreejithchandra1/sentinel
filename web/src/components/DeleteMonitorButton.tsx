@@ -51,7 +51,7 @@ export default function DeleteMonitorButton({
       type="button"
       onClick={() => setConfirming(true)}
       className={variant === 'danger' ? 'btn btn-danger' : 'btn btn-danger'}
-      style={{ fontSize: 15, padding: variant === 'danger' ? '8px 16px' : '6px 12px' }}
+      style={{ fontSize: 15 }}
     >
       Delete
     </button>
@@ -60,7 +60,7 @@ export default function DeleteMonitorButton({
 
 const styles: Record<string, React.CSSProperties> = {
   confirmBox: {
-    display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end',
+    display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start',
     background: colors.redDim, padding: 12, borderRadius: 8,
     border: `1px solid rgba(248,81,73,0.3)`,
   },

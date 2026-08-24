@@ -156,12 +156,14 @@ type CheckResult struct {
 }
 
 type Incident struct {
-	ID         string       `json:"id"`
-	MonitorID  string       `json:"monitor_id"`
-	Type       IncidentType `json:"type"`
-	Message    string       `json:"message,omitempty"`
-	StartedAt  time.Time    `json:"started_at"`
-	ResolvedAt *time.Time   `json:"resolved_at,omitempty"`
+	ID             string       `json:"id"`
+	MonitorID      string       `json:"monitor_id"`
+	Type           IncidentType `json:"type"`
+	Message        string       `json:"message,omitempty"`
+	StartedAt      time.Time    `json:"started_at"`
+	ResolvedAt     *time.Time   `json:"resolved_at,omitempty"`
+	AcknowledgedAt *time.Time   `json:"acknowledged_at,omitempty"`
+	AcknowledgedBy string       `json:"acknowledged_by,omitempty"`
 }
 
 type UserRole string

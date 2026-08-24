@@ -334,6 +334,30 @@ export interface Incident {
   message?: string
   started_at: string
   resolved_at?: string
+  acknowledged_at?: string
+  acknowledged_by?: string
+}
+
+export interface SLAMonitorRow {
+  monitor_id: string
+  name: string
+  tenant_id?: string
+  incident_count: number
+  downtime_seconds: number
+  mttr_seconds?: number
+  availability_pct: number
+}
+
+export interface SLAReport {
+  period_start: string
+  period_end: string
+  monitor_count: number
+  incident_count: number
+  downtime_seconds: number
+  mttr_seconds?: number
+  availability_pct: number
+  window_seconds: number
+  monitors: SLAMonitorRow[]
 }
 
 /** Local-calendar day → ISO from/to for incident filters. */
@@ -559,6 +583,14 @@ export const api = {
       params.set('to', to)
     }
     return request<PaginatedResults<Incident>>(`/api/incidents?${params}`)
+  },
+  getIncident: (id: string) => request<Incident>(`/api/incidents/${id}`),
+  acknowledgeIncident: (id: string) =>
+    request<Incident>(`/api/incidents/${id}/acknowledge`, { method: 'POST' }),
+  slaReport: (month: string, customer?: string) => {
+    const params = new URLSearchParams({ month })
+    if (customer) params.set('customer', customer)
+    return request<SLAReport>(`/api/reports/sla?${params}`)
   },
   getWebhooks: () => request<WebhookConfig[]>('/api/settings/webhooks'),
   putWebhooks: (hooks: WebhookConfig[]) =>

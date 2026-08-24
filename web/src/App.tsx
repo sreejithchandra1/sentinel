@@ -25,6 +25,8 @@ import SettingsTokens from './pages/settings/SettingsTokens'
 import SettingsAudit from './pages/settings/SettingsAudit'
 import SettingsCustomers from './pages/settings/SettingsCustomers'
 import Incidents from './pages/Incidents'
+import IncidentDetail from './pages/IncidentDetail'
+import SLAReportPage from './pages/SLAReport'
 import StatusPage from './pages/StatusPage'
 import Profile from './pages/Profile'
 import { api, Profile as AuthProfile } from './api'
@@ -78,6 +80,8 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Monitors />} />
           <Route path="/incidents" element={<Incidents />} />
+          <Route path="/incidents/:id" element={<IncidentDetail />} />
+          <Route path="/sla" element={<SLAReportPage />} />
           <Route path="/status" element={<StatusPage />} />
           <Route path="/performance" element={<Performance />} />
           <Route path="/performance/targets/new" element={<AdminRoute><PerformanceForm /></AdminRoute>} />

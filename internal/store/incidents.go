@@ -2,11 +2,14 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"strings"
 	"time"
 
 	"github.com/sentinel-monitoring/sentinel/internal/models"
 )
+
+var ErrIncidentResolved = errors.New("incident already resolved")
 
 func (s *Store) CreateIncident(inc *models.Incident) error {
 	inc.ID = newID()
@@ -47,7 +50,7 @@ func (s *Store) ResolveIncident(id string, resolvedAt time.Time) error {
 
 func (s *Store) GetOpenIncident(monitorID string, incidentType models.IncidentType) (*models.Incident, error) {
 	row := s.db.QueryRow(`
-		SELECT id, monitor_id, type, message, started_at, resolved_at
+		SELECT id, monitor_id, type, message, started_at, resolved_at, acknowledged_at, acknowledged_by
 		FROM incidents
 		WHERE monitor_id = ? AND type = ? AND resolved_at IS NULL
 		ORDER BY started_at DESC LIMIT 1`,
@@ -62,9 +65,9 @@ func scanIncident(row interface {
 	var inc models.Incident
 	var incType string
 	var startedAt string
-	var resolvedAt sql.NullString
+	var resolvedAt, ackedAt, ackedBy sql.NullString
 
-	err := row.Scan(&inc.ID, &inc.MonitorID, &incType, &inc.Message, &startedAt, &resolvedAt)
+	err := row.Scan(&inc.ID, &inc.MonitorID, &incType, &inc.Message, &startedAt, &resolvedAt, &ackedAt, &ackedBy)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -73,6 +76,11 @@ func scanIncident(row interface {
 	}
 
 	inc.Type = models.IncidentType(incType)
+	applyIncidentTimes(&inc, startedAt, resolvedAt, ackedAt, ackedBy)
+	return &inc, nil
+}
+
+func applyIncidentTimes(inc *models.Incident, startedAt string, resolvedAt, ackedAt, ackedBy sql.NullString) {
 	if t, err := parseTime(startedAt); err == nil {
 		inc.StartedAt = t
 	}
@@ -81,7 +89,77 @@ func scanIncident(row interface {
 			inc.ResolvedAt = &t
 		}
 	}
-	return &inc, nil
+	if ackedAt.Valid && ackedAt.String != "" {
+		if t, err := parseTime(ackedAt.String); err == nil {
+			inc.AcknowledgedAt = &t
+		}
+	}
+	if ackedBy.Valid {
+		inc.AcknowledgedBy = ackedBy.String
+	}
+}
+
+func (s *Store) GetIncident(id string) (*models.IncidentListItem, string, error) {
+	row := s.db.QueryRow(`
+		SELECT i.id, i.monitor_id, i.type, i.message, i.started_at, i.resolved_at,
+			i.acknowledged_at, i.acknowledged_by,
+			COALESCE(m.name, pt.name, '') AS monitor_name,
+			COALESCE(m.tenant_id, pt.tenant_id, '') AS tenant_id
+		FROM incidents i
+		LEFT JOIN monitors m ON m.id = i.monitor_id
+		LEFT JOIN performance_targets pt ON pt.id = i.monitor_id
+		WHERE i.id = ?`, id)
+
+	var item models.IncidentListItem
+	var incType string
+	var startedAt string
+	var resolvedAt, ackedAt, ackedBy sql.NullString
+	var tenantID string
+	err := row.Scan(
+		&item.ID, &item.MonitorID, &incType, &item.Message, &startedAt, &resolvedAt,
+		&ackedAt, &ackedBy, &item.MonitorName, &tenantID,
+	)
+	if err == sql.ErrNoRows {
+		return nil, "", nil
+	}
+	if err != nil {
+		return nil, "", err
+	}
+	item.Type = models.IncidentType(incType)
+	applyIncidentTimes(&item.Incident, startedAt, resolvedAt, ackedAt, ackedBy)
+	return &item, tenantID, nil
+}
+
+func (s *Store) AcknowledgeIncident(id, by string, at time.Time) (*models.IncidentListItem, error) {
+	item, _, err := s.GetIncident(id)
+	if err != nil {
+		return nil, err
+	}
+	if item == nil {
+		return nil, nil
+	}
+	if item.ResolvedAt != nil {
+		return item, ErrIncidentResolved
+	}
+	if item.AcknowledgedAt != nil {
+		return item, nil
+	}
+	_, err = s.db.Exec(`
+		UPDATE incidents SET acknowledged_at = ?, acknowledged_by = ?
+		WHERE id = ? AND resolved_at IS NULL AND acknowledged_at IS NULL`,
+		formatTime(at), by, id,
+	)
+	if err != nil {
+		return nil, err
+	}
+	item, _, err = s.GetIncident(id)
+	if err != nil {
+		return nil, err
+	}
+	if item != nil && item.AcknowledgedAt == nil && item.ResolvedAt != nil {
+		return item, ErrIncidentResolved
+	}
+	return item, nil
 }
 
 // IncidentQuery filters incident listings.
@@ -130,6 +208,7 @@ func (s *Store) QueryIncidents(q IncidentQuery) ([]models.IncidentListItem, erro
 
 	sqlQ := `
 		SELECT i.id, i.monitor_id, i.type, i.message, i.started_at, i.resolved_at,
+			i.acknowledged_at, i.acknowledged_by,
 			COALESCE(m.name, pt.name, '') AS monitor_name
 		FROM incidents i
 		LEFT JOIN monitors m ON m.id = i.monitor_id
@@ -152,19 +231,15 @@ func (s *Store) QueryIncidents(q IncidentQuery) ([]models.IncidentListItem, erro
 		var item models.IncidentListItem
 		var incType string
 		var startedAt string
-		var resolvedAt sql.NullString
+		var resolvedAt, ackedAt, ackedBy sql.NullString
 		if err := rows.Scan(
-			&item.ID, &item.MonitorID, &incType, &item.Message, &startedAt, &resolvedAt, &item.MonitorName,
+			&item.ID, &item.MonitorID, &incType, &item.Message, &startedAt, &resolvedAt,
+			&ackedAt, &ackedBy, &item.MonitorName,
 		); err != nil {
 			return nil, err
 		}
 		item.Type = models.IncidentType(incType)
-		item.StartedAt, _ = parseTime(startedAt)
-		if resolvedAt.Valid && resolvedAt.String != "" {
-			if t, err := parseTime(resolvedAt.String); err == nil {
-				item.ResolvedAt = &t
-			}
-		}
+		applyIncidentTimes(&item.Incident, startedAt, resolvedAt, ackedAt, ackedBy)
 		out = append(out, item)
 	}
 	return out, rows.Err()
