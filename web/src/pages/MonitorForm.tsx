@@ -430,14 +430,14 @@ export default function MonitorForm({
           Enabled
         </label>
         <div className="form-modal-actions">
-          <button type="button" className="btn" onClick={handleClose}>Cancel</button>
-          <button type="submit" className="btn btn-primary">{id ? 'Save Changes' : 'Create Monitor'}</button>
-        </div>
-        {id && form.name && (
-          <div style={{ marginTop: 8 }}>
+          {id && form.name && (
             <DeleteMonitorButton id={id} name={form.name} variant="danger" />
+          )}
+          <div className="form-modal-actions-end">
+            <button type="button" className="btn" onClick={handleClose}>Cancel</button>
+            <button type="submit" className="btn btn-primary">{id ? 'Save Changes' : 'Create Monitor'}</button>
           </div>
-        )}
+        </div>
       </form>
     </FormModal>
   )

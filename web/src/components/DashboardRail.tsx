@@ -42,12 +42,14 @@ export default function DashboardRail({
         {last ? (
           <>
             <div style={styles.lastTime}>{timeAgo(last.started_at)}</div>
-            <div style={styles.lastTitle}>{incidentTitle(last)}</div>
+            <Link to={`/incidents/${last.id}`} style={{ ...styles.lastTitle, ...styles.titleLink }}>
+              {incidentTitle(last)}
+            </Link>
             {last.message && (
               <div style={styles.lastMsg}>{last.message}</div>
             )}
             <div style={styles.lastMeta}>
-              {last.resolved_at ? 'Resolved' : 'Open'}
+              {last.resolved_at ? 'Resolved' : last.acknowledged_at ? 'Acknowledged' : 'Open'}
             </div>
             <Link to="/incidents" style={styles.link}>View incidents →</Link>
           </>
@@ -72,10 +74,12 @@ export default function DashboardRail({
                   background: inc.resolved_at ? colors.green : (inc.type === 'slow' ? colors.yellow : colors.red),
                 }} />
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={styles.listTitle}>{incidentTitle(inc)}</div>
+                  <div style={styles.listTitle}>
+                    <Link to={`/incidents/${inc.id}`} style={styles.titleLink}>{incidentTitle(inc)}</Link>
+                  </div>
                   <div style={styles.listMeta}>
                     {timeAgo(inc.started_at)}
-                    {inc.resolved_at ? ' · resolved' : ''}
+                    {inc.resolved_at ? ' · resolved' : inc.acknowledged_at ? ' · acknowledged' : ''}
                   </div>
                 </div>
               </li>
@@ -157,6 +161,10 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
     fontWeight: 600,
     marginBottom: 6,
+  },
+  titleLink: {
+    color: 'inherit',
+    textDecoration: 'none',
   },
   lastMsg: {
     fontSize: 13,

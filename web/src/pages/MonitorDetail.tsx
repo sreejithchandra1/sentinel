@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import {
   Area, AreaChart, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
@@ -19,6 +19,7 @@ import TypeBadge from '../components/TypeBadge'
 import { useAuth } from '../context/AuthContext'
 import { chartGridStroke, chartTick, chartTooltipLabel, chartTooltipStyle } from '../chartTheme'
 import { colors, fonts } from '../theme'
+import { formatDuration, incidentDurationSeconds } from '../utils/duration'
 import { useAdaptivePoll } from '../utils/poll'
 
 export default function MonitorDetail() {
@@ -350,6 +351,11 @@ function SidePanel({ monitor, incidents, onCheckDue }: {
             <Row label="When" value={new Date(lastIncident.started_at).toLocaleString()} />
             <Row label="Message" value={lastIncident.message || '—'} />
             <Row label="Status" value={incidentStatusLabel(lastIncident)} />
+            <div style={{ paddingTop: 10 }}>
+              <Link to={`/incidents/${lastIncident.id}`} style={{ color: colors.brand, fontWeight: 600, fontSize: 14, textDecoration: 'none' }}>
+                View incident →
+              </Link>
+            </div>
           </>
         ) : (
           <div style={{ color: colors.textMuted, fontSize: 14 }}>No recent incidents</div>
@@ -424,6 +430,7 @@ function Empty() {
 }
 
 function IncidentsTable({ monitorId }: { monitorId: string }) {
+  const navigate = useNavigate()
   const pageSize = 10
   const [page, setPage] = useState(0)
   const [filters, setFilters] = useState<IncidentFilterValues>({
@@ -436,12 +443,17 @@ function IncidentsTable({ monitorId }: { monitorId: string }) {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const tableRef = useRef<HTMLTableElement>(null)
-  const { widths, startResize, autoFit } = useColumnResize('monitor-incidents', 5)
+  const { widths, startResize, autoFit } = useColumnResize('monitor-incidents', 6)
   const sortValue = useCallback((inc: Incident, key: string) => {
     if (key === 'started') return inc.started_at
     if (key === 'type') return inc.type
     if (key === 'message') return inc.message || ''
-    if (key === 'status') return inc.resolved_at ? 'resolved' : 'open'
+    if (key === 'status') {
+      if (inc.resolved_at) return 'resolved'
+      if (inc.acknowledged_at) return 'acknowledged'
+      return 'open'
+    }
+    if (key === 'duration') return incidentDurationSeconds(inc.started_at, inc.resolved_at)
     if (key === 'resolved') return inc.resolved_at || ''
     return null
   }, [])
@@ -508,29 +520,38 @@ function IncidentsTable({ monitorId }: { monitorId: string }) {
               <ResizableTh index={0} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('started')}>Started</ResizableTh>
               <ResizableTh index={1} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('type')}>Type</ResizableTh>
               <ResizableTh index={2} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('message')}>Message</ResizableTh>
-              <ResizableTh index={3} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('status')}>Status</ResizableTh>
-              <ResizableTh index={4} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('resolved')}>Resolved</ResizableTh>
+              <ResizableTh index={3} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('duration')}>Duration</ResizableTh>
+              <ResizableTh index={4} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('status')}>Status</ResizableTh>
+              <ResizableTh index={5} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('resolved')}>Resolved</ResizableTh>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                  <td colSpan={5} style={{ color: colors.textMuted }}>Loading…</td>
+                  <td colSpan={6} style={{ color: colors.textMuted }}>Loading…</td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={5} style={{ color: colors.textMuted }}>No incidents recorded for this monitor.</td>
+                <td colSpan={6} style={{ color: colors.textMuted }}>No incidents recorded for this monitor.</td>
               </tr>
             ) : (
               sorted.map(inc => (
-                <tr key={inc.id} className={!inc.resolved_at ? ((inc.type === 'slow' || inc.type === 'ssl_expiry') ? 'row-warn' : 'row-down') : undefined}>
+                <tr
+                  key={inc.id}
+                  className={!inc.resolved_at ? ((inc.type === 'slow' || inc.type === 'ssl_expiry') ? 'row-warn' : 'row-down') : undefined}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => navigate(`/incidents/${inc.id}`)}
+                >
                   <td className="num">{new Date(inc.started_at).toLocaleString()}</td>
                   <td>
-                    <span style={styles.incidentType}>{inc.type}</span>
+                    <Link to={`/incidents/${inc.id}`} style={{ color: 'inherit', textDecoration: 'none' }} onClick={e => e.stopPropagation()}>
+                      <span style={styles.incidentType}>{inc.type}</span>
+                    </Link>
                   </td>
                   <td style={{ color: colors.textMuted }}>
                     {inc.message || '—'}
                   </td>
+                  <td className="num">{formatDuration(incidentDurationSeconds(inc.started_at, inc.resolved_at))}</td>
                   <td>
                     <IncidentStatus incident={inc} />
                   </td>

@@ -9,6 +9,13 @@ function sslExpiryDays(message?: string): number | null {
   return Number(m[1])
 }
 
+/** Open / Acknowledged / Resolved — used on the incident page. */
+export function incidentLifecycleLabel(incident: Incident): string {
+  if (incident.resolved_at) return 'Resolved'
+  if (incident.acknowledged_at) return 'Acknowledged'
+  return 'Open'
+}
+
 /** Status label for incident rows — cert/DNS changes are notices, not downtime. */
 export default function IncidentStatus({ incident }: { incident: Incident }) {
   const type = (incident.type || '').toLowerCase()
@@ -17,10 +24,15 @@ export default function IncidentStatus({ incident }: { incident: Incident }) {
     return <span style={styles.notice}>Notice</span>
   }
 
+  if (incident.resolved_at) {
+    return <span style={styles.resolved}>Resolved</span>
+  }
+
+  if (incident.acknowledged_at) {
+    return <span style={styles.acked}>Acknowledged</span>
+  }
+
   if (type === 'ssl_expiry' || type === 'slow') {
-    if (incident.resolved_at) {
-      return <span style={styles.resolved}>Resolved</span>
-    }
     if (type === 'ssl_expiry') {
       const days = sslExpiryDays(incident.message)
       if (days != null && days <= 7) {
@@ -30,10 +42,6 @@ export default function IncidentStatus({ incident }: { incident: Incident }) {
     return <span style={styles.warning}>Warning</span>
   }
 
-  if (incident.resolved_at) {
-    return <span style={styles.resolved}>Resolved</span>
-  }
-
   return <StatusBadge status="down" />
 }
 
@@ -41,6 +49,7 @@ export function incidentStatusLabel(incident: Incident): string {
   const type = (incident.type || '').toLowerCase()
   if (type === 'cert_change' || type === 'dns_change') return 'Notice'
   if (incident.resolved_at) return 'Resolved'
+  if (incident.acknowledged_at) return 'Acknowledged'
   if (type === 'ssl_expiry') {
     const days = sslExpiryDays(incident.message)
     if (days != null && days <= 7) return 'Critical'
@@ -52,6 +61,7 @@ export function incidentStatusLabel(incident: Incident): string {
 
 const styles: Record<string, React.CSSProperties> = {
   resolved: { color: colors.green, fontSize: 15, fontWeight: 600 },
+  acked: { color: colors.blue, fontSize: 15, fontWeight: 600 },
   notice: { color: colors.blue, fontSize: 15, fontWeight: 600 },
   warning: { color: colors.yellow, fontSize: 15, fontWeight: 600 },
   critical: { color: colors.red, fontSize: 15, fontWeight: 600 },

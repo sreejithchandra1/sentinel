@@ -19,6 +19,7 @@ export const iconSizes = {
 export const icons = {
   monitors: '/icons/monitors.svg',
   incidents: '/icons/incidents.svg',
+  sla: '/icons/sla.svg',
   performance: '/icons/performance.svg',
   customers: '/icons/customers.svg',
   users: '/icons/users.svg',

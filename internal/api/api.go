@@ -106,6 +106,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PUT /api/profile", s.authRequired(s.handleUpdateProfile))
 
 	s.mux.HandleFunc("GET /api/incidents", s.authRequired(s.handleListIncidents))
+	s.mux.HandleFunc("GET /api/incidents/{id}", s.authRequired(s.handleGetIncident))
+	s.mux.HandleFunc("POST /api/incidents/{id}/acknowledge", s.authRequired(s.handleAcknowledgeIncident))
+	s.mux.HandleFunc("GET /api/reports/sla", s.authRequired(s.handleGetSLAReport))
 
 	s.mux.HandleFunc("GET /api/settings/webhooks", s.platformAdminRequired(s.handleGetWebhooks))
 	s.mux.HandleFunc("PUT /api/settings/webhooks", s.platformAdminRequired(s.handlePutWebhooks))
