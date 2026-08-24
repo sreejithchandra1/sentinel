@@ -2,6 +2,8 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
+	"os"
 	"sort"
 	"time"
 
@@ -9,6 +11,32 @@ import (
 )
 
 const monitorSparklinePoints = 24
+const maxChartPoints = 400
+
+// downsamplePoints keeps at most max points, preserving spikes by taking the
+// highest latency sample in each bucket. Percentiles are computed on the full set.
+func downsamplePoints(points []models.StatsPoint, max int) []models.StatsPoint {
+	n := len(points)
+	if max <= 0 || n <= max {
+		return points
+	}
+	out := make([]models.StatsPoint, 0, max)
+	for i := 0; i < max; i++ {
+		start := i * n / max
+		end := (i + 1) * n / max
+		if end <= start {
+			continue
+		}
+		best := points[start]
+		for _, p := range points[start:end] {
+			if p.ResponseTimeMs > best.ResponseTimeMs {
+				best = p
+			}
+		}
+		out = append(out, best)
+	}
+	return out
+}
 
 func percentile(sorted []int, p float64) int {
 	if len(sorted) == 0 {
@@ -71,6 +99,7 @@ func fleetBucketDuration(since time.Time) time.Duration {
 }
 
 func (s *Store) GetMonitorStats(monitorID string, since time.Time) (*models.MonitorStats, error) {
+	t0 := time.Now()
 	rows, err := s.db.Query(`
 		SELECT checked_at, response_time_ms, status, dns_ms, tcp_ms, tls_ms, ttfb_ms
 		FROM check_results
@@ -125,6 +154,22 @@ func (s *Store) GetMonitorStats(monitorID string, since time.Time) (*models.Moni
 		stats.UptimePct = float64(upCount) / float64(total) * 100
 	}
 	stats.Performance = computePerformance(times, slowCount, total)
+	rawPoints := len(stats.Points)
+	stats.Points = downsamplePoints(stats.Points, maxChartPoints)
+	// #region agent log
+	if f, err := os.OpenFile("/Users/Sreejith/monitoring-tool/.cursor/debug-f7d7ab.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		_ = json.NewEncoder(f).Encode(map[string]any{
+			"sessionId": "f7d7ab", "runId": "post-fix", "hypothesisId": "E",
+			"location": "performance.go:GetMonitorStats", "message": "stats query complete",
+			"data": map[string]any{
+				"monitorID": monitorID, "pointsRaw": rawPoints, "pointsOut": len(stats.Points),
+				"ms": time.Since(t0).Milliseconds(),
+			},
+			"timestamp": time.Now().UnixMilli(),
+		})
+		_ = f.Close()
+	}
+	// #endregion
 	return stats, nil
 }
 

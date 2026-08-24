@@ -35,20 +35,46 @@ export default function MonitorDetail() {
 
   const load = useCallback(async () => {
     if (!id) return null
-    const [m, r, s, inc] = await Promise.all([
-      api.getMonitor(id),
-      api.results(id, { limit: 1, offset: 0 }),
-      api.stats(id, periodRef.current),
-      api.monitorIncidents(id, { limit: 20, offset: 0 }),
-    ])
+    const t0 = performance.now()
+    const timed = async <T,>(name: string, p: Promise<T>, hypothesisId: string) => {
+      const s = performance.now()
+      const v = await p
+      // #region agent log
+      fetch('http://127.0.0.1:7473/ingest/49c06dfb-d2a4-42ad-83ca-3f7de467dc84',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f7d7ab'},body:JSON.stringify({sessionId:'f7d7ab',runId:'post-fix',hypothesisId,location:'MonitorDetail.tsx:load',message:'detail API',data:{name,ms:Math.round(performance.now()-s),period:periodRef.current,points:name==='stats'?(v as MonitorStats).points?.length:undefined},timestamp:Date.now()})}).catch(()=>{})
+      // #endregion
+      return v
+    }
+    const monitorP = timed('monitor', api.getMonitor(id), 'A')
+    const resultsP = timed('results', api.results(id, { limit: 1, offset: 0 }), 'A')
+    const statsP = timed('stats', api.stats(id, periodRef.current), 'E')
+    const incP = timed('incidents', api.monitorIncidents(id, { limit: 20, offset: 0 }), 'A')
+
+    const [m, r] = await Promise.all([monitorP, resultsP])
     setMonitor(m)
     setLatest(r.items[0])
+    // #region agent log
+    fetch('http://127.0.0.1:7473/ingest/49c06dfb-d2a4-42ad-83ca-3f7de467dc84',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f7d7ab'},body:JSON.stringify({sessionId:'f7d7ab',runId:'post-fix',hypothesisId:'A',location:'MonitorDetail.tsx:gate',message:'Header unblocked; stats still in flight',data:{paintMs:Math.round(performance.now()-t0),period:periodRef.current},timestamp:Date.now()})}).catch(()=>{})
+    // #endregion
+
+    const [s, inc] = await Promise.all([statsP, incP])
     setStats(s)
     setIncidents(inc.items)
+    // #region agent log
+    fetch('http://127.0.0.1:7473/ingest/49c06dfb-d2a4-42ad-83ca-3f7de467dc84',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f7d7ab'},body:JSON.stringify({sessionId:'f7d7ab',runId:'post-fix',hypothesisId:'B',location:'MonitorDetail.tsx:stats',message:'Stats arrived after first paint',data:{totalMs:Math.round(performance.now()-t0),period:periodRef.current,pointCount:s.points?.length??0},timestamp:Date.now()})}).catch(()=>{})
+    // #endregion
     return m
   }, [id])
 
   const refreshRef = useAdaptivePoll(id, load, [period])
+
+  useEffect(() => {
+    if (!stats) return
+    const t0 = performance.now()
+    const n = stats.points?.length ?? 0
+    // #region agent log
+    fetch('http://127.0.0.1:7473/ingest/49c06dfb-d2a4-42ad-83ca-3f7de467dc84',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f7d7ab'},body:JSON.stringify({sessionId:'f7d7ab',runId:'post-fix',hypothesisId:'B',location:'MonitorDetail.tsx:chart',message:'Chart dataset size',data:{period,pointCount:n,mapMs:Math.round(performance.now()-t0)},timestamp:Date.now()})}).catch(()=>{})
+    // #endregion
+  }, [stats, period])
 
   if (!monitor) return <div style={{ color: colors.textMuted }}>Loading…</div>
 
@@ -97,7 +123,9 @@ export default function MonitorDetail() {
             />
           </div>
           <div style={{ height: 260 }}>
-            {chartData.length > 0 ? (
+            {!stats ? (
+              <div style={styles.emptyChart}>Loading history…</div>
+            ) : chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData}>
                   <defs>
@@ -113,7 +141,7 @@ export default function MonitorDetail() {
                     contentStyle={chartTooltipStyle}
                     labelStyle={chartTooltipLabel}
                   />
-                  <Area type="monotone" dataKey="ms" stroke={colors.brand} fill="url(#fillInstrument)" strokeWidth={2} />
+                  <Area type="linear" dataKey="ms" stroke={colors.brand} fill="url(#fillInstrument)" strokeWidth={2} isAnimationActive={false} />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
