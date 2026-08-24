@@ -81,3 +81,72 @@ func TestListMonitorRowStats(t *testing.T) {
 		t.Fatalf("missing=%+v", got["missing"])
 	}
 }
+
+func TestDownsamplePointsPreservesSpikes(t *testing.T) {
+	points := make([]models.StatsPoint, 1000)
+	for i := range points {
+		points[i] = models.StatsPoint{ResponseTimeMs: i}
+	}
+	points[500].ResponseTimeMs = 9999
+	got := downsamplePoints(points, 400)
+	if len(got) != 400 {
+		t.Fatalf("len=%d, want 400", len(got))
+	}
+	found := false
+	for _, p := range got {
+		if p.ResponseTimeMs == 9999 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected spike 9999 to be kept")
+	}
+	if len(downsamplePoints(points[:10], 400)) != 10 {
+		t.Fatal("short series should be unchanged")
+	}
+}
+
+func TestGetMonitorStatsCapsReturnedPoints(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	m := &models.Monitor{Name: "cap", URL: "https://cap.example", Enabled: true}
+	if err := st.CreateMonitor(m); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	for i := 0; i < 500; i++ {
+		if err := st.InsertCheckResult(&models.CheckResult{
+			MonitorID:      m.ID,
+			Status:         models.StatusUp,
+			ResponseTimeMs: i,
+			CheckedAt:      now.Add(time.Duration(i) * time.Minute),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stats, err := st.GetMonitorStats(m.ID, now.Add(-30*24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stats.Points) != maxChartPoints {
+		t.Fatalf("points=%d, want %d", len(stats.Points), maxChartPoints)
+	}
+	if stats.UptimePct != 100 {
+		t.Fatalf("uptime=%v, want 100 (full series, not downsampled)", stats.UptimePct)
+	}
+	found := false
+	for _, p := range stats.Points {
+		if p.ResponseTimeMs == 499 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected max spike 499 to be kept")
+	}
+}
