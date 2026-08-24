@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api, Incident, Monitor } from '../api'
 import { ColGroup, ResizableTh, useColumnResize, useTableSort } from '../components/ColumnResize'
 import IncidentFilters, { IncidentFilterValues } from '../components/IncidentFilters'
@@ -7,6 +7,7 @@ import IncidentStatus from '../components/IncidentStatus'
 import PageHeader from '../components/PageHeader'
 import Panel from '../components/Panel'
 import { colors } from '../theme'
+import { formatDuration, incidentDurationSeconds } from '../utils/duration'
 
 const PAGE_SIZE = 20
 
@@ -18,6 +19,7 @@ const emptyFilters: IncidentFilterValues = {
 }
 
 export default function Incidents() {
+  const navigate = useNavigate()
   const [incidents, setIncidents] = useState<Incident[]>([])
   const [monitors, setMonitors] = useState<Monitor[]>([])
   const [filters, setFilters] = useState<IncidentFilterValues>(emptyFilters)
@@ -27,14 +29,19 @@ export default function Incidents() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const tableRef = useRef<HTMLTableElement>(null)
-  const { widths, startResize, autoFit } = useColumnResize('incidents', 6)
+  const { widths, startResize, autoFit } = useColumnResize('incidents', 7)
   const sortValue = useCallback((inc: Incident, key: string) => {
     if (key === 'monitor') return inc.monitor_name || inc.monitor_id
     if (key === 'type') return inc.type
     if (key === 'message') return inc.message || ''
     if (key === 'started') return inc.started_at
+    if (key === 'duration') return incidentDurationSeconds(inc.started_at, inc.resolved_at)
     if (key === 'resolved') return inc.resolved_at || ''
-    if (key === 'status') return inc.resolved_at ? 'resolved' : 'open'
+    if (key === 'status') {
+      if (inc.resolved_at) return 'resolved'
+      if (inc.acknowledged_at) return 'acknowledged'
+      return 'open'
+    }
     return null
   }, [])
   const { sorted, header } = useTableSort(incidents, sortValue)
@@ -123,29 +130,44 @@ export default function Incidents() {
                 <ResizableTh index={1} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('type')}>Type</ResizableTh>
                 <ResizableTh index={2} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('message')}>Message</ResizableTh>
                 <ResizableTh index={3} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('started')}>Started</ResizableTh>
-                <ResizableTh index={4} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('resolved')}>Resolved</ResizableTh>
-                <ResizableTh index={5} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('status')}>Status</ResizableTh>
+                <ResizableTh index={4} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('duration')}>Duration</ResizableTh>
+                <ResizableTh index={5} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('resolved')}>Resolved</ResizableTh>
+                <ResizableTh index={6} startResize={startResize} autoFit={autoFit} tableRef={tableRef} {...header('status')}>Status</ResizableTh>
               </tr>
             </thead>
             <tbody>
               {loading && incidents.length === 0 ? (
                 <tr>
-                  <td colSpan={6} style={{ padding: 24, color: colors.textMuted }}>Loading…</td>
+                  <td colSpan={7} style={{ padding: 24, color: colors.textMuted }}>Loading…</td>
                 </tr>
               ) : (
                 sorted.map(inc => {
                   const open = !inc.resolved_at
                   const warn = inc.type === 'slow' || inc.type === 'ssl_expiry'
                   return (
-                  <tr key={inc.id} className={open ? (warn ? 'row-warn' : 'row-down') : undefined}>
+                  <tr
+                    key={inc.id}
+                    className={open ? (warn ? 'row-warn' : 'row-down') : undefined}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => navigate(`/incidents/${inc.id}`)}
+                  >
                     <td>
-                      <Link to={`/monitors/${inc.monitor_id}`} style={styles.link}>
+                      <Link
+                        to={`/monitors/${inc.monitor_id}`}
+                        style={styles.link}
+                        onClick={e => e.stopPropagation()}
+                      >
                         {inc.monitor_name || inc.monitor_id}
                       </Link>
                     </td>
-                    <td><span style={styles.type}>{inc.type}</span></td>
+                    <td>
+                      <Link to={`/incidents/${inc.id}`} style={styles.typeLink} onClick={e => e.stopPropagation()}>
+                        <span style={styles.type}>{inc.type}</span>
+                      </Link>
+                    </td>
                     <td style={{ color: colors.textMuted }}>{inc.message || '—'}</td>
                     <td className="num">{new Date(inc.started_at).toLocaleString()}</td>
+                    <td className="num">{formatDuration(incidentDurationSeconds(inc.started_at, inc.resolved_at))}</td>
                     <td className="num" style={{ color: colors.textMuted }}>
                       {inc.resolved_at ? new Date(inc.resolved_at).toLocaleString() : '—'}
                     </td>
@@ -190,5 +212,6 @@ export default function Incidents() {
 
 const styles: Record<string, React.CSSProperties> = {
   link: { color: colors.brand, textDecoration: 'none', fontWeight: 500 },
+  typeLink: { color: 'inherit', textDecoration: 'none' },
   type: { textTransform: 'uppercase', fontSize: 12, fontWeight: 700, color: colors.textMuted, letterSpacing: '0.04em' },
 }

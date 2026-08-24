@@ -1872,8 +1872,15 @@ a:focus-visible,
 .form-modal-actions {
   display: flex;
   gap: 8px;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   margin-top: 8px;
+}
+
+.form-modal-actions-end {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .form-modal .form-row {

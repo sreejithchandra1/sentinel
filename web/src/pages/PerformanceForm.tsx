@@ -159,14 +159,14 @@ export default function PerformanceForm({
           </label>
         )}
         <div className="form-modal-actions">
-          <button type="button" className="btn" onClick={handleClose}>Cancel</button>
-          <button type="submit" className="btn btn-primary">Save</button>
-        </div>
-        {id && (
-          <div style={{ marginTop: 8 }}>
-            <button type="button" className="btn" onClick={() => setDeleteOpen(true)} style={{ color: colors.red }}>Delete</button>
+          {id && (
+            <button type="button" className="btn btn-danger" onClick={() => setDeleteOpen(true)}>Delete</button>
+          )}
+          <div className="form-modal-actions-end">
+            <button type="button" className="btn" onClick={handleClose}>Cancel</button>
+            <button type="submit" className="btn btn-primary">Save</button>
           </div>
-        )}
+        </div>
       </form>
 
       <ConfirmDialog

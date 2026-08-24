@@ -3,9 +3,9 @@ package models
 import "time"
 
 type WebhookConfig struct {
-	URL      string   `json:"url"`
-	Enabled  bool     `json:"enabled"`
-	Events   []string `json:"events"`
+	URL     string   `json:"url"`
+	Enabled bool     `json:"enabled"`
+	Events  []string `json:"events"`
 }
 
 // SlackConfig is a tenant-scoped Incoming Webhook integration.
@@ -61,12 +61,12 @@ type StatusPageConfig struct {
 }
 
 type PublicMonitorStatus struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Type       string `json:"type"`
-	Status     string `json:"status"`
-	LastCheck  string `json:"last_checked_at,omitempty"`
-	URL        string `json:"url,omitempty"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	Status    string `json:"status"`
+	LastCheck string `json:"last_checked_at,omitempty"`
+	URL       string `json:"url,omitempty"`
 }
 
 type PublicStatusResponse struct {
@@ -77,6 +77,28 @@ type PublicStatusResponse struct {
 type IncidentListItem struct {
 	Incident
 	MonitorName string `json:"monitor_name"`
+}
+
+type SLAMonitorRow struct {
+	MonitorID       string   `json:"monitor_id"`
+	Name            string   `json:"name"`
+	TenantID        string   `json:"tenant_id,omitempty"`
+	IncidentCount   int      `json:"incident_count"`
+	DowntimeSeconds int64    `json:"downtime_seconds"`
+	MTTRSeconds     *float64 `json:"mttr_seconds,omitempty"`
+	AvailabilityPct float64  `json:"availability_pct"`
+}
+
+type SLAReport struct {
+	PeriodStart     time.Time       `json:"period_start"`
+	PeriodEnd       time.Time       `json:"period_end"`
+	MonitorCount    int             `json:"monitor_count"`
+	IncidentCount   int             `json:"incident_count"`
+	DowntimeSeconds int64           `json:"downtime_seconds"`
+	MTTRSeconds     *float64        `json:"mttr_seconds,omitempty"`
+	AvailabilityPct float64         `json:"availability_pct"`
+	WindowSeconds   int64           `json:"window_seconds"`
+	Monitors        []SLAMonitorRow `json:"monitors"`
 }
 
 type HeartbeatConfig struct {
