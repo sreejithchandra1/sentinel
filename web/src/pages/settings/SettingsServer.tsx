@@ -28,7 +28,7 @@ export default function SettingsServer() {
       {error && <div style={styles.error} role="alert">{error}</div>}
       <form onSubmit={handleSave} style={styles.card}>
         <h3 style={styles.title}>Server Settings</h3>
-        <p style={styles.desc}>Stored in the database. Some values require a process restart to take effect.</p>
+        <p style={styles.desc}>Dashboard URL is used immediately for reset and alert links. Worker and retention changes need a process restart.</p>
         <div style={styles.stack}>
           <label className="field">
             <span className="field-label">Dashboard URL</span>

@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sentinel-monitoring/sentinel/internal/config"
 	"github.com/sentinel-monitoring/sentinel/internal/models"
 	"github.com/sentinel-monitoring/sentinel/internal/store"
 )
@@ -80,6 +81,21 @@ func (a *Alerter) clearRecoveryStreak(monitorID string) {
 
 func (a *Alerter) UpdateSMTP(cfg models.SMTPConfig) {
 	a.cfg = cfg
+}
+
+func (a *Alerter) liveDashboardURL() string {
+	base := strings.TrimRight(strings.TrimSpace(a.dashboardURL), "/")
+	if a.store == nil {
+		return base
+	}
+	cfg, err := a.store.GetServerSettings(config.ServerConfig{DashboardURL: base})
+	if err != nil {
+		return base
+	}
+	if u := strings.TrimRight(strings.TrimSpace(cfg.DashboardURL), "/"); u != "" {
+		return u
+	}
+	return base
 }
 
 func (a *Alerter) refreshSMTP() {
@@ -243,9 +259,9 @@ func (a *Alerter) SendTestEmail(to string) error {
 	body := a.renderAlertEmail(AlertMeta{
 		Event:        "TEST",
 		Name:         "Test Alert",
-		URL:          strings.TrimRight(a.dashboardURL, "/"),
+		URL:          a.liveDashboardURL(),
 		Message:      "This is a test email from Sentinel.",
-		DashboardURL: strings.TrimRight(a.dashboardURL, "/"),
+		DashboardURL: a.liveDashboardURL(),
 		EventAt:      time.Now().UTC(),
 	})
 	return a.sendSMTP(to, subject, body)
@@ -602,7 +618,7 @@ func (a *Alerter) renderPasswordChangedEmail(username string) string {
 	_ = passwordChangedTmpl.Execute(&buf, map[string]string{
 		"Username":     username,
 		"Time":         time.Now().UTC().Format(time.RFC1123),
-		"DashboardURL": strings.TrimRight(a.dashboardURL, "/") + "/login",
+		"DashboardURL": a.liveDashboardURL() + "/login",
 	})
 	return buf.String()
 }

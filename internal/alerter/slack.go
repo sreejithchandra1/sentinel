@@ -61,9 +61,9 @@ func (a *Alerter) SendTestSlack(tenantID string) error {
 	meta := AlertMeta{
 		Event:        "TEST",
 		Name:         "Sentinel",
-		URL:          a.dashboardURL,
+		URL:          a.liveDashboardURL(),
 		Message:      "This is a test notification from Sentinel.",
-		DashboardURL: strings.TrimRight(a.dashboardURL, "/"),
+		DashboardURL: a.liveDashboardURL(),
 		EventAt:      time.Now().UTC(),
 	}
 	body, err := buildSlackPayload(meta)

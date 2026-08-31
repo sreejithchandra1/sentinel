@@ -103,7 +103,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
             ? 'Access your monitoring dashboard'
             : 'Enter your email address and we will send you a reset link.'}
         </p>
-        {message && <div className="flash-ok" role="status">{message}</div>}
+        {mode === 'login' && message && <div className="flash-ok" role="status">{message}</div>}
         {error && <div className="flash-error" role="alert">{error}</div>}
         {mode === 'login' ? (
           step === 'credentials' ? (

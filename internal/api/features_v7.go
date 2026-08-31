@@ -469,6 +469,17 @@ func (s *Server) serverFallback() config.ServerConfig {
 	}
 }
 
+func (s *Server) dashboardBaseURL() string {
+	cfg, err := s.store.GetServerSettings(s.serverFallback())
+	if err != nil {
+		return strings.TrimRight(strings.TrimSpace(s.dashboardURL), "/")
+	}
+	if u := strings.TrimRight(strings.TrimSpace(cfg.DashboardURL), "/"); u != "" {
+		return u
+	}
+	return strings.TrimRight(strings.TrimSpace(s.dashboardURL), "/")
+}
+
 func parseTagsInput(raw string) []string {
 	if raw == "" {
 		return nil
