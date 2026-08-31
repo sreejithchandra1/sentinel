@@ -78,7 +78,7 @@ func (a *Alerter) NotifyMonitorMeta(m *models.Monitor, meta AlertMeta) error {
 	meta.Name = m.Name
 	meta.URL = m.URL
 	if meta.DashboardURL == "" {
-		meta.DashboardURL = strings.TrimRight(a.dashboardURL, "/") + "/monitors/" + m.ID
+		meta.DashboardURL = a.liveDashboardURL() + "/monitors/" + m.ID
 	}
 	if meta.EventAt.IsZero() {
 		meta.EventAt = time.Now().UTC()
@@ -199,7 +199,7 @@ func (a *Alerter) HandlePerformanceResult(t *models.PerformanceTarget, result *m
 func (a *Alerter) sendPerformanceAlert(t *models.PerformanceTarget, meta AlertMeta) error {
 	meta.Name = t.Name
 	meta.URL = t.URL
-	meta.DashboardURL = strings.TrimRight(a.dashboardURL, "/") + "/performance/" + t.ID
+	meta.DashboardURL = a.liveDashboardURL() + "/performance/" + t.ID
 	if meta.EventAt.IsZero() {
 		meta.EventAt = time.Now().UTC()
 	}

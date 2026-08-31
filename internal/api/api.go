@@ -239,7 +239,7 @@ func (s *Server) completeLogin(w http.ResponseWriter, r *http.Request, user *mod
 		Value:    sessionID,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   cookieSecure(r, s.dashboardURL),
+		Secure:   cookieSecure(r, s.dashboardBaseURL()),
 		SameSite: http.SameSiteLaxMode,
 		Expires:  expires,
 	})
@@ -255,7 +255,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   cookieSecure(r, s.dashboardURL),
+		Secure:   cookieSecure(r, s.dashboardBaseURL()),
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	})

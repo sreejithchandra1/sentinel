@@ -81,7 +81,7 @@ func (s *Server) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resetURL := strings.TrimRight(s.dashboardURL, "/") + "/reset-password?token=" + token
+	resetURL := passwordResetURL(s.dashboardBaseURL(), token)
 	to, username := user.Email, user.Username
 	go func() {
 		if err := s.alerter.SendPasswordResetEmail(to, username, resetURL); err != nil {
@@ -141,4 +141,8 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	jsonOK(w, map[string]bool{"ok": true})
+}
+
+func passwordResetURL(dashboardURL, token string) string {
+	return strings.TrimRight(strings.TrimSpace(dashboardURL), "/") + "/reset-password?token=" + token
 }
