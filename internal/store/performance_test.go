@@ -150,3 +150,82 @@ func TestGetMonitorStatsCapsReturnedPoints(t *testing.T) {
 		t.Fatal("expected max spike 499 to be kept")
 	}
 }
+
+func TestGetPerformanceTargetStatsExcludesFailed(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	target := &models.PerformanceTarget{
+		Name:            "lat",
+		URL:             "https://lat.example",
+		Enabled:         true,
+		SlowThresholdMs: 3000,
+	}
+	if err := st.CreatePerformanceTarget(target); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	insert := func(status models.MonitorStatus, rt int, i int) {
+		t.Helper()
+		if err := st.InsertPerformanceResult(&models.PerformanceResult{
+			TargetID:       target.ID,
+			Status:         status,
+			ResponseTimeMs: rt,
+			CheckedAt:      now.Add(time.Duration(i) * time.Minute),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insert(models.StatusUp, 100, 0)
+	insert(models.StatusUp, 120, 1)
+	insert(models.StatusDown, 10000, 2)
+
+	stats, err := st.GetPerformanceTargetStats(target.ID, now.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stats.Points) != 3 {
+		t.Fatalf("points=%d want 3 (failures stay on the chart)", len(stats.Points))
+	}
+	if stats.Performance.MaxMs != 120 {
+		t.Fatalf("max=%d want 120 (failed timeout excluded from percentiles)", stats.Performance.MaxMs)
+	}
+	if stats.AvgResponse != 110 {
+		t.Fatalf("avg=%d want 110", stats.AvgResponse)
+	}
+
+	pct, total, slow, err := st.GetPerformanceSlowStats(target.ID, now.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 || slow != 0 {
+		t.Fatalf("slow stats total=%d slow=%d pct=%v want total=2 slow=0", total, slow, pct)
+	}
+}
+
+func TestSlowIncidentCanReferencePerformanceTarget(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	target := &models.PerformanceTarget{Name: "p", URL: "https://p.example", Enabled: true}
+	if err := st.CreatePerformanceTarget(target); err != nil {
+		t.Fatal(err)
+	}
+	inc := &models.Incident{MonitorID: target.ID, Type: models.IncidentSlow, Message: "slow", StartedAt: time.Now().UTC()}
+	if err := st.CreateIncident(inc); err != nil {
+		t.Fatal(err)
+	}
+	open, err := st.GetOpenIncident(target.ID, models.IncidentSlow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if open == nil {
+		t.Fatal("expected open slow incident for performance target")
+	}
+}

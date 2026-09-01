@@ -297,11 +297,13 @@ func (s *Store) GetPerformanceTargetStats(targetID string, since time.Time) (*mo
 			TLSMs:          nullableInt(tlsMs),
 			TTFBMs:         nullableInt(ttfbMs),
 		})
-		times = append(times, rt)
-		totalRT += rt
-		total++
-		if threshold > 0 && rt > threshold {
-			slowCount++
+		if status != string(models.StatusDown) {
+			times = append(times, rt)
+			totalRT += rt
+			total++
+			if threshold > 0 && rt > threshold {
+				slowCount++
+			}
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -324,8 +326,8 @@ func (s *Store) GetPerformanceSlowStats(targetID string, since time.Time) (slowP
 		SELECT COUNT(*),
 			SUM(CASE WHEN ? > 0 AND response_time_ms > ? THEN 1 ELSE 0 END)
 		FROM performance_results
-		WHERE target_id = ? AND checked_at >= ?`,
-		threshold, threshold, targetID, formatTime(since),
+		WHERE target_id = ? AND checked_at >= ? AND status != ?`,
+		threshold, threshold, targetID, formatTime(since), string(models.StatusDown),
 	).Scan(&total, &slowSum)
 	if err != nil {
 		return 0, 0, 0, err
@@ -380,9 +382,6 @@ func (s *Store) GetFleetPerformanceScoped(since time.Time, tenantID string) (*mo
 		if err := targetRows.Scan(&id, &name, &url, &lastStatus, &slowThreshold); err != nil {
 			return nil, err
 		}
-		if lastStatus == string(models.StatusDown) {
-			lastStatus = string(models.StatusDegraded)
-		}
 		targetsByID[id] = &targetAgg{meta: models.MonitorPerformance{
 			MonitorID: id, MonitorName: name, Type: "http", URL: url,
 			Status: lastStatus, SlowThresholdMs: slowThreshold,
@@ -420,7 +419,6 @@ func (s *Store) GetFleetPerformanceScoped(since time.Time, tenantID string) (*mo
 		if err := resultRows.Scan(&targetID, &checkedAt, &rt, &status); err != nil {
 			return nil, err
 		}
-		_ = status
 		t, err := parseTime(checkedAt)
 		if err != nil {
 			continue
@@ -428,6 +426,9 @@ func (s *Store) GetFleetPerformanceScoped(since time.Time, tenantID string) (*mo
 
 		a, ok := targetsByID[targetID]
 		if !ok {
+			continue
+		}
+		if status == string(models.StatusDown) {
 			continue
 		}
 		a.times = append(a.times, rt)

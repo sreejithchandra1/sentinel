@@ -26,6 +26,13 @@ func monitorAlertAfterFailures(m *models.Monitor) int {
 	return m.AlertAfterFailures
 }
 
+func performanceAlertAfterSlow(t *models.PerformanceTarget) int {
+	if t == nil || t.AlertAfterSlow < 1 {
+		return defaultFlapThreshold
+	}
+	return t.AlertAfterSlow
+}
+
 type Alerter struct {
 	store        *store.Store
 	cfg          models.SMTPConfig

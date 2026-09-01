@@ -113,7 +113,7 @@ export interface MonitorRowStats {
   points: number[]
 }
 
-export type PerformanceHealth = 'good' | 'warning' | 'critical' | 'collecting'
+export type PerformanceHealth = 'good' | 'warning' | 'critical' | 'collecting' | 'failed'
 
 export interface ServicePerformance {
   service_id: string

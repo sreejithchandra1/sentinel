@@ -103,7 +103,7 @@ func (s *Store) CreatePerformanceTarget(t *models.PerformanceTarget) error {
 		t.SlowThresholdMs = 3000
 	}
 	if t.AlertAfterSlow < 1 {
-		t.AlertAfterSlow = 1
+		t.AlertAfterSlow = 2
 	}
 	t.Enabled = true
 	t.LastStatus = models.StatusUnknown
@@ -126,7 +126,7 @@ func (s *Store) UpdatePerformanceTarget(t *models.PerformanceTarget) error {
 		lastChecked = formatTime(*t.LastCheckedAt)
 	}
 	if t.AlertAfterSlow < 1 {
-		t.AlertAfterSlow = 1
+		t.AlertAfterSlow = 2
 	}
 	if t.IntervalSeconds < 30 {
 		t.IntervalSeconds = 30
@@ -145,6 +145,9 @@ func (s *Store) UpdatePerformanceTarget(t *models.PerformanceTarget) error {
 }
 
 func (s *Store) DeletePerformanceTarget(id string) error {
+	if _, err := s.db.Exec(`DELETE FROM incidents WHERE monitor_id = ?`, id); err != nil {
+		return err
+	}
 	_, err := s.db.Exec(`DELETE FROM performance_targets WHERE id = ?`, id)
 	return err
 }
@@ -184,12 +187,9 @@ func scanPerformanceTargetRow(row interface {
 	t.AlertEmails = nullableString(alertEmails)
 	t.TenantID = nullableString(tenantID)
 	if t.AlertAfterSlow < 1 {
-		t.AlertAfterSlow = 1
+		t.AlertAfterSlow = 2
 	}
 	t.LastStatus = models.MonitorStatus(lastStatus)
-	if t.LastStatus == models.StatusDown {
-		t.LastStatus = models.StatusDegraded
-	}
 	t.LastCheckedAt = nullableTime(lastCheckedAt)
 	if ct, err := parseTime(nullableString(createdAt)); err == nil {
 		t.CreatedAt = ct
