@@ -14,7 +14,7 @@ const defaults: Partial<PerformanceTarget> = {
   slow_threshold_ms: 3000,
   follow_redirects: true,
   enabled: true,
-  alert_after_slow: 1,
+  alert_after_slow: 2,
 }
 
 export default function PerformanceForm({
@@ -143,7 +143,7 @@ export default function PerformanceForm({
           </Field>
         </div>
         <p style={{ color: colors.textMuted, fontSize: 14, margin: '-8px 0 16px' }}>
-          Send a SLOW alert only after this many slow checks in a row (default 1).
+          Send a SLOW alert only after this many slow checks in a row (default 2). Failed probes do not count as slow.
         </p>
         <label style={styles.checkbox}>
           <input type="checkbox" checked={form.follow_redirects ?? true} onChange={e => set('follow_redirects', e.target.checked)} />

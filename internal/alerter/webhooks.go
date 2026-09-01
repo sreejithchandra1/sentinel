@@ -122,33 +122,20 @@ func (a *Alerter) HandlePerformanceResult(t *models.PerformanceTarget, result *m
 		return nil
 	}
 
-	prev := prevStatus
 	newStatus := result.Status
-	if newStatus == models.StatusDown {
-		newStatus = models.StatusDegraded
-	}
-	if prev == models.StatusDown {
-		prev = models.StatusDegraded
-	}
-
-	wasSlow := prev == models.StatusDegraded
-	isSlow := newStatus == models.StatusDegraded
-	threshold := t.AlertAfterSlow
-	if threshold < 1 {
-		threshold = 1
-	}
+	threshold := performanceAlertAfterSlow(t)
 	consecutive := t.ConsecutiveSlow
+	isSlow := newStatus == models.StatusDegraded
+	isUp := newStatus == models.StatusUp
+
+	openSlow, err := a.store.GetOpenIncident(t.ID, models.IncidentSlow)
+	if err != nil {
+		return err
+	}
 
 	if isSlow {
-		openSlow, _ := a.store.GetOpenIncident(t.ID, models.IncidentSlow)
-		if openSlow != nil {
-			return nil
-		}
-		if consecutive < threshold {
-			return nil
-		}
-		// Fire once when crossing the consecutive threshold (or when already at/above after recovery gap).
-		if wasSlow && consecutive != threshold {
+		a.clearRecoveryStreak(t.ID)
+		if openSlow != nil || consecutive < threshold {
 			return nil
 		}
 		pct, total, slow, _ := a.store.GetPerformanceSlowStats(t.ID, time.Now().Add(-time.Hour))
@@ -161,7 +148,9 @@ func (a *Alerter) HandlePerformanceResult(t *models.PerformanceTarget, result *m
 		inc := &models.Incident{
 			MonitorID: t.ID, Type: models.IncidentSlow, Message: msg, StartedAt: result.CheckedAt,
 		}
-		_ = a.store.CreateIncident(inc)
+		if err := a.store.CreateIncident(inc); err != nil {
+			return err
+		}
 		return a.sendPerformanceAlert(t, AlertMeta{
 			Event:      "SLOW",
 			Message:    msg,
@@ -171,29 +160,31 @@ func (a *Alerter) HandlePerformanceResult(t *models.PerformanceTarget, result *m
 		})
 	}
 
-	if !isSlow && wasSlow {
-		openSlow, _ := a.store.GetOpenIncident(t.ID, models.IncidentSlow)
-		hadSlow, _ := a.store.HasOpenIncident(t.ID, models.IncidentSlow)
-		hadDown, _ := a.store.HasOpenIncident(t.ID, models.IncidentDown)
-		if hadSlow || hadDown {
-			meta := AlertMeta{
-				Event:      "NORMAL",
-				Message:    "Back to normal",
-				ResponseMs: result.ResponseTimeMs,
-				EventAt:    result.CheckedAt,
-			}
-			if openSlow != nil {
-				meta.IncidentID = openSlow.ID
-				started := openSlow.StartedAt
-				meta.StartedAt = &started
-			}
-			_ = a.store.ResolveOpenIncidents(t.ID, models.IncidentSlow, result.CheckedAt)
-			_ = a.store.ResolveOpenIncidents(t.ID, models.IncidentDown, result.CheckedAt)
-			return a.sendPerformanceAlert(t, meta)
-		}
+	if openSlow == nil {
+		a.clearRecoveryStreak(t.ID)
+		return nil
+	}
+	if !isUp {
+		a.clearRecoveryStreak(t.ID)
+		return nil
 	}
 
-	return nil
+	streak := a.incRecoveryStreak(t.ID)
+	if streak < threshold {
+		return nil
+	}
+	a.clearRecoveryStreak(t.ID)
+	started := openSlow.StartedAt
+	_ = a.store.ResolveOpenIncidents(t.ID, models.IncidentSlow, result.CheckedAt)
+	_ = a.store.ResolveOpenIncidents(t.ID, models.IncidentDown, result.CheckedAt)
+	return a.sendPerformanceAlert(t, AlertMeta{
+		Event:      "NORMAL",
+		Message:    "Back to normal",
+		ResponseMs: result.ResponseTimeMs,
+		IncidentID: openSlow.ID,
+		EventAt:    result.CheckedAt,
+		StartedAt:  &started,
+	})
 }
 
 func (a *Alerter) sendPerformanceAlert(t *models.PerformanceTarget, meta AlertMeta) error {

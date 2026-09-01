@@ -13,23 +13,23 @@ import (
 )
 
 type Scheduler struct {
-	store           *store.Store
-	checker         *checker.Checker
-	alerter         *alerter.Alerter
-	workers         int
-	retention       int
-	lastRun         map[string]time.Time
-	perfLastRun     map[string]time.Time
-	mu              sync.Mutex
+	store       *store.Store
+	checker     *checker.Checker
+	alerter     *alerter.Alerter
+	workers     int
+	retention   int
+	lastRun     map[string]time.Time
+	perfLastRun map[string]time.Time
+	mu          sync.Mutex
 }
 
 func New(s *store.Store, c *checker.Checker, a *alerter.Alerter, workers, retentionDays int) *Scheduler {
 	return &Scheduler{
-		store:     s,
-		checker:   c,
-		alerter:   a,
-		workers:   workers,
-		retention: retentionDays,
+		store:       s,
+		checker:     c,
+		alerter:     a,
+		workers:     workers,
+		retention:   retentionDays,
 		lastRun:     make(map[string]time.Time),
 		perfLastRun: make(map[string]time.Time),
 	}
@@ -167,6 +167,7 @@ func (sch *Scheduler) runPerformanceCheck(ctx context.Context, t *models.Perform
 	if status == models.StatusDegraded {
 		consecutive++
 	} else {
+		// Up or failed: neither continues a slow streak. Failures are not recovery.
 		consecutive = 0
 	}
 	if err := sch.store.UpdatePerformanceTargetAfterCheck(t.ID, status, consecutive, result.CheckedAt); err != nil {

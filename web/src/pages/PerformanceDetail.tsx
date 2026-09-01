@@ -58,7 +58,14 @@ export default function PerformanceDetail() {
       <PageHeader
         title={target.name}
         badges={
-          target.last_status !== 'up' && target.last_status !== 'unknown' ? (
+          target.last_status === 'down' ? (
+            <span style={{
+              color: colors.red, background: colors.redDim,
+              padding: '4px 8px', borderRadius: radius.sm, fontSize: 12, fontWeight: 600,
+            }}>
+              Failed
+            </span>
+          ) : target.last_status === 'degraded' ? (
             <span style={{
               color: colors.yellow, background: colors.yellowDim,
               padding: '4px 8px', borderRadius: radius.sm, fontSize: 12, fontWeight: 600,

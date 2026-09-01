@@ -17,12 +17,13 @@ import { useAuth } from '../context/AuthContext'
 import { chartGridStroke, chartTick, chartTooltipLabel, chartTooltipStyle } from '../chartTheme'
 import { colors, fonts } from '../theme'
 
-type HealthTab = 'all' | 'good' | 'slow' | 'collecting'
+type HealthTab = 'all' | 'good' | 'slow' | 'failed' | 'collecting'
 
 const healthColors: Record<PerformanceHealth, string> = {
   good: colors.green,
   warning: colors.yellow,
   critical: colors.red,
+  failed: colors.red,
   collecting: colors.textMuted,
 }
 
@@ -41,6 +42,7 @@ function formatBucket(iso: string, period: string) {
 }
 
 function targetHealth(t: PerformanceTarget, svc?: ServicePerformance): PerformanceHealth {
+  if (t.last_status === 'down') return 'failed'
   if (svc?.has_data) return svc.health
   const sla = t.slow_threshold_ms || 0
   const latest = t.latest_response_time_ms
@@ -51,6 +53,7 @@ function targetHealth(t: PerformanceTarget, svc?: ServicePerformance): Performan
 
 function healthLabel(h: PerformanceHealth): string {
   if (h === 'good') return 'Within SLA'
+  if (h === 'failed') return 'Failed'
   if (h === 'warning' || h === 'critical') return 'Slow'
   return 'Collecting'
 }
@@ -113,6 +116,7 @@ export default function Performance() {
   const filtered = useMemo(() => {
     if (healthTab === 'all') return withHealth
     if (healthTab === 'slow') return withHealth.filter(r => r.health === 'warning' || r.health === 'critical')
+    if (healthTab === 'failed') return withHealth.filter(r => r.health === 'failed')
     return withHealth.filter(r => r.health === healthTab)
   }, [withHealth, healthTab])
 
@@ -131,6 +135,7 @@ export default function Performance() {
 
   const good = withHealth.filter(r => r.health === 'good').length
   const slow = withHealth.filter(r => r.health === 'warning' || r.health === 'critical').length
+  const failed = withHealth.filter(r => r.health === 'failed').length
   const collecting = withHealth.filter(r => r.health === 'collecting').length
 
   const attention = (summary?.services || []).filter(s => {
@@ -151,6 +156,7 @@ export default function Performance() {
     { id: 'all', label: 'All', count: withHealth.length },
     { id: 'good', label: 'Within SLA', count: good },
     { id: 'slow', label: 'Slow', count: slow },
+    { id: 'failed', label: 'Failed', count: failed },
     { id: 'collecting', label: 'Collecting', count: collecting },
   ]
 
@@ -222,6 +228,7 @@ export default function Performance() {
               <MetricCard label="Targets" value={String(searched.length)} sub="Total targets" />
               <MetricCard label="Within SLA" value={String(good)} accent="green" />
               <MetricCard label="Slow" value={String(slow)} accent="yellow" />
+              <MetricCard label="Failed" value={String(failed)} accent="red" />
               <MetricCard label="Collecting" value={String(collecting)} />
             </div>
           )}
@@ -283,7 +290,7 @@ export default function Performance() {
                     const svc = serviceById[t.id]
                     const ms = t.latest_response_time_ms
                     return (
-                      <tr key={t.id} className={health === 'warning' || health === 'critical' ? 'row-warn' : undefined}>
+                      <tr key={t.id} className={health === 'failed' ? 'row-down' : health === 'warning' || health === 'critical' ? 'row-warn' : undefined}>
                         <td>
                           <Link to={`/performance/${t.id}`} style={styles.targetLink}>
                             <span style={styles.targetName}>{t.name}</span>
@@ -303,7 +310,7 @@ export default function Performance() {
                         <td className="num">
                           <span style={{
                             fontWeight: 600,
-                            color: health === 'good' || health === 'collecting' ? colors.text : colors.yellow,
+                            color: health === 'failed' ? colors.red : health === 'good' || health === 'collecting' ? colors.text : colors.yellow,
                           }}>
                             {typeof ms === 'number' ? `${ms} ms` : '—'}
                           </span>

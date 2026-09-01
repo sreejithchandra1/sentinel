@@ -25,15 +25,9 @@ func (c *Checker) ProbePerformance(ctx context.Context, t *models.PerformanceTar
 	}
 
 	cr := c.probeHTTP(ctx, m)
-	status := cr.Status
-	if status == models.StatusDown {
-		status = models.StatusDegraded
-	} else if status == models.StatusUp && t.SlowThresholdMs > 0 && cr.ResponseTimeMs > t.SlowThresholdMs {
-		status = models.StatusDegraded
-	}
 	return &models.PerformanceResult{
 		TargetID:       t.ID,
-		Status:         status,
+		Status:         performanceStatus(cr, t.SlowThresholdMs),
 		StatusCode:     cr.StatusCode,
 		ResponseTimeMs: cr.ResponseTimeMs,
 		DNSMs:          cr.DNSMs,
@@ -43,4 +37,16 @@ func (c *Checker) ProbePerformance(ctx context.Context, t *models.PerformanceTar
 		Error:          cr.Error,
 		CheckedAt:      cr.CheckedAt,
 	}
+}
+
+// performanceStatus keeps reachability failures as down. Slow is only a completed
+// response whose wall time exceeds the target threshold (including timeout-after-reach).
+func performanceStatus(cr *models.CheckResult, slowThresholdMs int) models.MonitorStatus {
+	if cr == nil || cr.Status == models.StatusDown {
+		return models.StatusDown
+	}
+	if slowThresholdMs > 0 && cr.ResponseTimeMs > slowThresholdMs {
+		return models.StatusDegraded
+	}
+	return models.StatusUp
 }

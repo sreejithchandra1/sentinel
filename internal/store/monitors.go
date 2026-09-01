@@ -16,15 +16,15 @@ tags, heartbeat_token, tenant_id, alert_after_failures,
 consecutive_failures, last_status, last_checked_at, created_at, updated_at`
 
 type monitorScanRow struct {
-	id, monitorType, name, url, method, lastStatus string
+	id, monitorType, name, url, method, lastStatus                                                      string
 	config, keywordExist, keywordNotExist, requestBody, requestHeaders, httpUser, httpPass, alertEmails sql.NullString
-	tagsRaw, heartbeatToken, tenantID                                               sql.NullString
-	port, expectedMin, expectedMax                                                  sql.NullInt64
-	followRedirects, enabled, notifyEmail, notifySlack, notifyWebhooks, invert      int
-	expectedStatus, intervalSeconds, timeoutMs                                      int
-	slowThresholdMs, alertAfterFailures, consecutiveFailures                        int
-	lastCheckedAt, createdAt, updatedAt                                             sql.NullString
-	latestRT                                                                        sql.NullInt64
+	tagsRaw, heartbeatToken, tenantID                                                                   sql.NullString
+	port, expectedMin, expectedMax                                                                      sql.NullInt64
+	followRedirects, enabled, notifyEmail, notifySlack, notifyWebhooks, invert                          int
+	expectedStatus, intervalSeconds, timeoutMs                                                          int
+	slowThresholdMs, alertAfterFailures, consecutiveFailures                                            int
+	lastCheckedAt, createdAt, updatedAt                                                                 sql.NullString
+	latestRT                                                                                            sql.NullInt64
 }
 
 func (r *monitorScanRow) scan(row interface{ Scan(dest ...any) error }) error {
@@ -297,6 +297,9 @@ func (s *Store) UpdateMonitor(m *models.Monitor) error {
 }
 
 func (s *Store) DeleteMonitor(id string) error {
+	if _, err := s.db.Exec(`DELETE FROM incidents WHERE monitor_id = ?`, id); err != nil {
+		return err
+	}
 	_, err := s.db.Exec(`DELETE FROM monitors WHERE id = ?`, id)
 	return err
 }
