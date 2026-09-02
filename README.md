@@ -101,11 +101,6 @@ Single `sentinel` binary runs everything:
 3. **Alert engine** — SMTP notifications on state changes
 4. **REST API + Dashboard** — embedded React UI
 
-## Roadmap
-
-- Phase 3: Linux agent (CPU, memory, disk, process monitoring)
-- Phase 4: Slack, Telegram, Discord, Teams webhooks
-- Phase 5: Root-cause analysis engine
 
 ## License
 
