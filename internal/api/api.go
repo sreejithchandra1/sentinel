@@ -84,8 +84,12 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/settings/smtp", s.platformAdminRequired(s.handleGetSMTP))
 	s.mux.HandleFunc("PUT /api/settings/smtp", s.platformAdminRequired(s.handlePutSMTP))
 	s.mux.HandleFunc("POST /api/settings/smtp/test", s.platformAdminRequired(s.handleTestSMTP))
+	s.mux.HandleFunc("GET /api/settings/smtp/log", s.platformAdminRequired(s.handleListEmailLog))
 
 	s.mux.HandleFunc("GET /api/settings/notifications", s.adminRequired(s.handleNotificationsSummary))
+	s.mux.HandleFunc("GET /api/settings/alert-recipients", s.adminRequired(s.handleGetAlertRecipients))
+	s.mux.HandleFunc("PUT /api/settings/alert-recipients", s.adminRequired(s.handlePutAlertRecipients))
+	s.mux.HandleFunc("POST /api/settings/alert-recipients/test", s.adminRequired(s.handleTestAlertRecipients))
 	s.mux.HandleFunc("GET /api/settings/slack", s.adminRequired(s.handleGetSlack))
 	s.mux.HandleFunc("PUT /api/settings/slack", s.adminRequired(s.handlePutSlack))
 	s.mux.HandleFunc("POST /api/settings/slack/test", s.adminRequired(s.handleTestSlack))
@@ -100,6 +104,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/settings/customers", s.platformAdminRequired(s.handleListCustomers))
 	s.mux.HandleFunc("POST /api/settings/customers", s.platformAdminRequired(s.handleCreateCustomer))
 	s.mux.HandleFunc("PUT /api/settings/customers/{id}", s.platformAdminRequired(s.handleUpdateCustomer))
+	s.mux.HandleFunc("POST /api/settings/customers/{id}/test-email", s.platformAdminRequired(s.handleTestCustomerEmails))
 	s.mux.HandleFunc("DELETE /api/settings/customers/{id}", s.platformAdminRequired(s.handleDeleteCustomer))
 
 	s.mux.HandleFunc("GET /api/profile", s.authRequired(s.handleGetProfile))
@@ -818,6 +823,52 @@ func (s *Server) handleTestSMTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonOK(w, map[string]bool{"ok": true})
+}
+
+func (s *Server) handleListEmailLog(w http.ResponseWriter, r *http.Request) {
+	limit := queryInt(r, "limit", 20)
+	if limit < 1 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	offset := queryInt(r, "offset", 0)
+	if offset < 0 {
+		offset = 0
+	}
+	from, to, err := parseIncidentDayRange(r)
+	if err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	q := store.EmailLogQuery{
+		Status: strings.TrimSpace(r.URL.Query().Get("status")),
+		Kind:   strings.TrimSpace(r.URL.Query().Get("kind")),
+		From:   from,
+		To:     to,
+		Limit:  limit,
+		Offset: offset,
+	}
+	items, err := s.store.QueryEmailLog(q)
+	if err != nil {
+		jsonInternal(w, err)
+		return
+	}
+	if items == nil {
+		items = []models.EmailLog{}
+	}
+	total, err := s.store.CountEmailLog(q)
+	if err != nil {
+		jsonInternal(w, err)
+		return
+	}
+	jsonOK(w, map[string]any{
+		"items":  items,
+		"total":  total,
+		"limit":  limit,
+		"offset": offset,
+	})
 }
 
 func jsonOK(w http.ResponseWriter, v any) {

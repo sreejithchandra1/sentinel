@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, NotificationsSummary, SlackConfig, SMTPConfig, WebhookConfig } from '../../api'
 import { useAuth } from '../../context/AuthContext'
@@ -10,16 +10,54 @@ export default function SettingsNotifications() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [alertEmails, setAlertEmails] = useState('')
+  const [emailsLoaded, setEmailsLoaded] = useState(isPlatformAdmin)
 
   async function load() {
     try {
       setSummary(await api.getNotificationsSummary())
+      if (!isPlatformAdmin) {
+        const rec = await api.getAlertRecipients()
+        setAlertEmails(rec.alert_emails || '')
+        setEmailsLoaded(true)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load notifications')
     }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [isPlatformAdmin])
+
+  async function saveAlertEmails(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    setError('')
+    setMessage('')
+    try {
+      const saved = await api.putAlertRecipients({ alert_emails: alertEmails })
+      setAlertEmails(saved.alert_emails || '')
+      setMessage('Alert recipients saved')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save recipients')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function sendTest() {
+    setBusy(true)
+    setError('')
+    setMessage('')
+    try {
+      await api.testAlertRecipients(alertEmails)
+      setMessage('Test email sent')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Test failed'
+      setError(/too many requests/i.test(msg) ? 'Too many requests — wait a minute and try again.' : msg)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function toggleSlack(enabled: boolean) {
     setBusy(true)
@@ -81,8 +119,8 @@ export default function SettingsNotifications() {
         <h3 style={styles.title}>Notification endpoints</h3>
         <p style={styles.desc}>
           {isPlatformAdmin
-            ? 'Enable Email, Slack, and webhooks independently. Alerts can go to multiple channels at once.'
-            : 'Configure Slack for your customer account. Email uses the organization SMTP server and per-monitor recipients.'}
+            ? 'Enable Email, Slack, and webhooks independently. Customer alerts CC platform email and Slack when those channels are on.'
+            : 'Set this customer’s email recipients and Slack webhook. Alerts are not sent to other customers or to every user in the app.'}
         </p>
 
         <div style={styles.grid}>
@@ -103,7 +141,7 @@ export default function SettingsNotifications() {
               title="Slack"
               description={
                 isPlatformAdmin
-                  ? 'Incoming Webhook for platform-scoped monitors and targets.'
+                  ? 'Incoming Webhook for internal monitors, and a copy of every customer alert.'
                   : 'Incoming Webhook for this customer’s monitors and targets.'
               }
               configured={summary.slack.configured}
@@ -127,6 +165,38 @@ export default function SettingsNotifications() {
           )}
         </div>
       </div>
+
+      {!isPlatformAdmin && emailsLoaded && (
+        <div style={{ ...styles.card, marginTop: 16 }}>
+          <h3 style={styles.title}>Email recipients</h3>
+          <p style={styles.desc}>
+            Down, recovery, and slow alerts for this customer go here after the monitor’s consecutive-failure threshold (default 2). Platform operators may also receive a copy.
+            Per-monitor alert emails override this list.
+          </p>
+          <form onSubmit={saveAlertEmails}>
+            <label className="field" style={{ marginBottom: 16 }}>
+              <span className="field-label">Alert emails (comma-separated)</span>
+              <input
+                className="input"
+                value={alertEmails}
+                onChange={e => setAlertEmails(e.target.value)}
+                placeholder="ops@customer.com, oncall@customer.com"
+              />
+            </label>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button type="submit" className="btn btn-primary" disabled={busy}>Save recipients</button>
+              <button
+                type="button"
+                className="btn"
+                disabled={busy || !alertEmails.trim()}
+                onClick={sendTest}
+              >
+                Send test
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </>
   )
 }

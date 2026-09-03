@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -102,6 +103,9 @@ func (sch *Scheduler) shouldRun(m models.Monitor) bool {
 func (sch *Scheduler) runCheck(ctx context.Context, m *models.Monitor) {
 	result := sch.checker.Probe(ctx, m)
 	result.Status = models.InvertMonitorStatus(m.Invert, result.Status)
+	if m.Invert && result.Status == models.StatusDown && strings.TrimSpace(result.Error) == "" {
+		result.Error = "invert is on and the host responded"
+	}
 	if err := sch.store.InsertCheckResult(result); err != nil {
 		log.Printf("scheduler: save result: %v", err)
 		return
@@ -197,5 +201,11 @@ func (sch *Scheduler) prune() {
 		log.Printf("scheduler: prune performance: %v", err)
 	} else if pn > 0 {
 		log.Printf("scheduler: pruned %d old performance results", pn)
+	}
+	en, err := sch.store.PruneOldEmailLog(before)
+	if err != nil {
+		log.Printf("scheduler: prune email log: %v", err)
+	} else if en > 0 {
+		log.Printf("scheduler: pruned %d old email log rows", en)
 	}
 }

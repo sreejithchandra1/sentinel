@@ -11,6 +11,7 @@ const allTabs = [
   { path: '/settings/status-page', label: 'Status Page', platformOnly: true },
   { path: '/settings/tokens', label: 'API Tokens', platformOnly: false },
   { path: '/settings/audit', label: 'Audit', platformOnly: true },
+  { path: '/settings/email-log', label: 'Email log', platformOnly: true },
 ]
 
 export default function SettingsLayout() {

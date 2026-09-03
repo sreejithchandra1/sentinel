@@ -63,12 +63,12 @@ export default function SettingsSMTP() {
           <Field label="Username"><input className="input" value={cfg.username} onChange={e => set('username', e.target.value)} /></Field>
           <Field label="Password"><input className="input" type="password" value={cfg.password} onChange={e => set('password', e.target.value)} placeholder="Leave blank to keep existing" /></Field>
           <Field label="From Address"><input className="input" value={cfg.from} onChange={e => set('from', e.target.value)} /></Field>
-          <Field label="Alert Recipients">
+          <Field label="Platform alert recipients">
             <input className="input" value={cfg.alert_emails || ''} onChange={e => set('alert_emails', e.target.value)} placeholder="you@example.com, team@example.com" />
           </Field>
           <p style={{ color: colors.textMuted, fontSize: 14, margin: '-8px 0 16px' }}>
-            Monitoring alerts (down, recovery, slow) are sent here. If empty, alerts go to admin profile emails.
-            From address is only used as the sender, not the recipient.
+            Internal monitors use this list. Customer alerts are always CC’d here. Leave blank if there is no platform copy.
+            From address is only the sender, not a recipient. User profile emails are never used.
           </p>
           <label style={styles.checkbox}>
             <input type="checkbox" checked={cfg.tls} onChange={e => set('tls', e.target.checked)} />
@@ -88,6 +88,13 @@ export default function SettingsSMTP() {
             <input className="input" value={testTo} onChange={e => setTestTo(e.target.value)} placeholder="recipient@example.com" />
           </Field>
           <button type="button" onClick={handleTest} className="btn" style={{ marginTop: 8 }}>Send Test</button>
+          <p style={{ color: colors.textMuted, fontSize: 14, margin: '16px 0 0' }}>
+            Delivery attempts are listed under{' '}
+            <Link to="/settings/email-log" style={{ color: colors.brand, textDecoration: 'none', fontWeight: 600 }}>
+              Settings → Email log
+            </Link>
+            .
+          </p>
         </div>
       </div>
     </>

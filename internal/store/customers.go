@@ -14,7 +14,7 @@ var ErrMonitorQuotaExceeded = errors.New("Monitor Quota Exceeded")
 
 func (s *Store) ListCustomers() ([]models.Customer, error) {
 	rows, err := s.db.Query(`
-		SELECT c.id, c.name, c.monitor_quota, c.created_at,
+		SELECT c.id, c.name, c.monitor_quota, c.alert_emails, c.created_at,
 			(SELECT COUNT(*) FROM monitors m WHERE m.tenant_id = c.id) AS monitor_count
 		FROM customers c
 		ORDER BY c.name ASC`)
@@ -36,7 +36,7 @@ func (s *Store) ListCustomers() ([]models.Customer, error) {
 
 func (s *Store) GetCustomer(id string) (*models.Customer, error) {
 	row := s.db.QueryRow(`
-		SELECT c.id, c.name, c.monitor_quota, c.created_at,
+		SELECT c.id, c.name, c.monitor_quota, c.alert_emails, c.created_at,
 			(SELECT COUNT(*) FROM monitors m WHERE m.tenant_id = c.id) AS monitor_count
 		FROM customers c WHERE c.id = ?`, id)
 	c, err := scanCustomer(row, true)
@@ -60,8 +60,8 @@ func (s *Store) CreateCustomer(name string, monitorQuota int) (*models.Customer,
 	now := time.Now().UTC()
 	id := newID()
 	_, err := s.db.Exec(`
-		INSERT INTO customers (id, name, monitor_quota, created_at)
-		VALUES (?, ?, ?, ?)`,
+		INSERT INTO customers (id, name, monitor_quota, alert_emails, created_at)
+		VALUES (?, ?, ?, '', ?)`,
 		id, name, monitorQuota, formatTime(now),
 	)
 	if err != nil {
@@ -70,7 +70,7 @@ func (s *Store) CreateCustomer(name string, monitorQuota int) (*models.Customer,
 	return s.GetCustomer(id)
 }
 
-func (s *Store) UpdateCustomer(id, name string, monitorQuota int) (*models.Customer, error) {
+func (s *Store) UpdateCustomer(id, name string, monitorQuota int, alertEmails string) (*models.Customer, error) {
 	existing, err := s.GetCustomer(id)
 	if err != nil {
 		return nil, err
@@ -85,7 +85,8 @@ func (s *Store) UpdateCustomer(id, name string, monitorQuota int) (*models.Custo
 	if monitorQuota < 1 {
 		return nil, fmt.Errorf("monitor_quota must be at least 1")
 	}
-	_, err = s.db.Exec(`UPDATE customers SET name = ?, monitor_quota = ? WHERE id = ?`, name, monitorQuota, id)
+	_, err = s.db.Exec(`UPDATE customers SET name = ?, monitor_quota = ?, alert_emails = ? WHERE id = ?`,
+		name, monitorQuota, strings.TrimSpace(alertEmails), id)
 	if err != nil {
 		return nil, err
 	}
@@ -159,9 +160,9 @@ func scanCustomer(row interface{ Scan(dest ...any) error }, withCount bool) (mod
 	var createdAt string
 	var err error
 	if withCount {
-		err = row.Scan(&c.ID, &c.Name, &c.MonitorQuota, &createdAt, &c.MonitorCount)
+		err = row.Scan(&c.ID, &c.Name, &c.MonitorQuota, &c.AlertEmails, &createdAt, &c.MonitorCount)
 	} else {
-		err = row.Scan(&c.ID, &c.Name, &c.MonitorQuota, &createdAt)
+		err = row.Scan(&c.ID, &c.Name, &c.MonitorQuota, &c.AlertEmails, &createdAt)
 	}
 	if err != nil {
 		return c, err

@@ -383,7 +383,7 @@ export default function MonitorForm({
                 value={form.alert_emails || ''}
                 onChange={e => set('alert_emails', e.target.value)}
                 className="input"
-                placeholder="Leave blank to use default recipients"
+                placeholder="Leave blank to use this customer’s notification recipients"
               />
             </Field>
           )}

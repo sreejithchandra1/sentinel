@@ -1,5 +1,5 @@
 import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
-import AppLogo from '../../components/AppLogo'
+import AppLogo, { applyFavicon } from '../../components/AppLogo'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import { api, OrgSettings } from '../../api'
 import { colors } from '../../theme'
@@ -44,6 +44,7 @@ export default function SettingsGeneral() {
     try {
       const reset = await api.resetGeneral()
       setCfg(reset)
+      applyFavicon(reset.logo)
       setResetOpen(false)
       setMessage('Organization settings reset to defaults')
     } catch (err) {
@@ -60,6 +61,7 @@ export default function SettingsGeneral() {
     try {
       const saved = await api.putGeneral(cfg)
       setCfg(saved)
+      applyFavicon(saved.logo)
       setMessage('Organization settings saved')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed')
@@ -107,7 +109,7 @@ export default function SettingsGeneral() {
                 )}
               </div>
             </div>
-            <p style={styles.hint}>PNG, JPG, or SVG. Max 512KB. Shown in the sidebar. Empty uses the default Sentinel logo.</p>
+            <p style={styles.hint}>PNG, JPG, or SVG. Max 512KB. Shown in the sidebar and as the browser favicon. Empty uses the default Sentinel logo.</p>
           </div>
 
           <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>

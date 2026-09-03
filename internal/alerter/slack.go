@@ -9,6 +9,14 @@ import (
 	"time"
 )
 
+func (a *Alerter) fireSlackForAlert(tenantID string, meta AlertMeta) {
+	tenantID = strings.TrimSpace(tenantID)
+	a.fireSlack(tenantID, meta)
+	if tenantID != "" {
+		a.fireSlack("", meta)
+	}
+}
+
 func (a *Alerter) fireSlack(tenantID string, meta AlertMeta) {
 	if a.store == nil {
 		return

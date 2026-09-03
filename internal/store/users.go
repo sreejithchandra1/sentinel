@@ -87,59 +87,6 @@ func ValidatePassword(password string) error {
 	return nil
 }
 
-func (s *Store) ListAlertProfileEmails() ([]string, error) {
-	rows, err := s.db.Query(`
-		SELECT email FROM users
-		WHERE email != '' AND role = ? AND (tenant_id IS NULL OR tenant_id = '')
-		ORDER BY created_at ASC`, string(models.RoleAdmin))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	seen := map[string]bool{}
-	var emails []string
-	for rows.Next() {
-		var email string
-		if err := rows.Scan(&email); err != nil {
-			return nil, err
-		}
-		email = strings.TrimSpace(email)
-		if email == "" || seen[strings.ToLower(email)] {
-			continue
-		}
-		seen[strings.ToLower(email)] = true
-		emails = append(emails, email)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	if len(emails) > 0 {
-		return emails, nil
-	}
-
-	// Fall back to any user profile email if no platform admin has one set.
-	rows2, err := s.db.Query(`
-		SELECT email FROM users WHERE email != '' ORDER BY created_at ASC`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows2.Close()
-	for rows2.Next() {
-		var email string
-		if err := rows2.Scan(&email); err != nil {
-			return nil, err
-		}
-		email = strings.TrimSpace(email)
-		if email == "" || seen[strings.ToLower(email)] {
-			continue
-		}
-		seen[strings.ToLower(email)] = true
-		emails = append(emails, email)
-	}
-	return emails, rows2.Err()
-}
-
 func (s *Store) ListUsers() ([]models.User, error) {
 	rows, err := s.db.Query(`
 		SELECT id, username, name, email, password_hash, mfa_enabled, role, tenant_id, created_at, updated_at
