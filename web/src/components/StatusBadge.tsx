@@ -6,6 +6,7 @@ const labels: Record<string, string> = {
   degraded: 'Warning',
   unknown: 'Unknown',
   critical: 'Critical',
+  paused: 'Paused',
 }
 
 const statusStyles: Record<string, { bg: string; text: string; dot: string }> = {
@@ -13,11 +14,17 @@ const statusStyles: Record<string, { bg: string; text: string; dot: string }> = 
   down: { bg: colors.redDim, text: colors.red, dot: colors.red },
   degraded: { bg: colors.yellowDim, text: colors.yellow, dot: colors.yellow },
   critical: { bg: colors.redDim, text: colors.red, dot: colors.red },
+  paused: { bg: 'rgba(156,163,175,0.12)', text: colors.textMuted, dot: colors.textMuted },
   unknown: { bg: 'rgba(156,163,175,0.12)', text: colors.textMuted, dot: colors.textMuted },
 }
 
+export function isPaused(target: { enabled?: boolean }): boolean {
+  return target.enabled === false
+}
+
 /** Map stored monitor status to badge status (SSL down = critical expiry). */
-export function badgeStatusFor(monitorType: string | undefined, status: string): string {
+export function badgeStatusFor(monitorType: string | undefined, status: string, enabled?: boolean): string {
+  if (enabled === false) return 'paused'
   if ((monitorType || 'http') === 'ssl' && status === 'down') return 'critical'
   return status
 }

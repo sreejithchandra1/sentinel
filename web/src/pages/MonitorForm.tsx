@@ -425,10 +425,17 @@ export default function MonitorForm({
             </span>
           </label>
         )}
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input type="checkbox" checked={form.enabled ?? true} onChange={e => set('enabled', e.target.checked)} />
-          Enabled
-        </label>
+        {id && (
+          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <input type="checkbox" checked={form.enabled ?? true} onChange={e => set('enabled', e.target.checked)} />
+            <span>
+              Checks running
+              <span style={{ display: 'block', color: colors.textMuted, fontSize: 14, marginTop: 4 }}>
+                Uncheck to pause. History, recipients, and settings are kept.
+              </span>
+            </span>
+          </label>
+        )}
         <div className="form-modal-actions">
           {id && form.name && (
             <DeleteMonitorButton id={id} name={form.name} variant="danger" />

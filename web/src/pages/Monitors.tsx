@@ -12,12 +12,12 @@ import Panel from '../components/Panel'
 import MonitorForm from './MonitorForm'
 import SegmentedTabs from '../components/SegmentedTabs'
 import Sparkline from '../components/Sparkline'
-import StatusBadge, { badgeStatusFor } from '../components/StatusBadge'
+import StatusBadge, { badgeStatusFor, isPaused } from '../components/StatusBadge'
 import TypeBadge from '../components/TypeBadge'
 import { useAuth } from '../context/AuthContext'
 import { colors } from '../theme'
 
-type StatusTab = 'all' | 'up' | 'degraded' | 'down'
+type StatusTab = 'all' | 'up' | 'degraded' | 'down' | 'paused'
 
 type RowStats = {
   uptime_pct: number
@@ -71,6 +71,7 @@ export default function Monitors() {
   const [monitorForm, setMonitorForm] = useState<string | 'new' | null>(null)
   const [deleteMonitor, setDeleteMonitor] = useState<Monitor | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [togglingId, setTogglingId] = useState('')
   const tableRef = useRef<HTMLTableElement>(null)
   const { widths, startResize, autoFit } = useColumnResize('monitors', 7)
 
@@ -115,13 +116,14 @@ export default function Monitors() {
 
   const filtered = useMemo(() => {
     if (statusTab === 'all') return searched
-    return searched.filter(m => m.last_status === statusTab)
+    if (statusTab === 'paused') return searched.filter(m => isPaused(m))
+    return searched.filter(m => !isPaused(m) && m.last_status === statusTab)
   }, [searched, statusTab])
 
   const sortValue = useCallback((m: Monitor, key: string) => {
     if (key === 'name') return m.name
     if (key === 'type') return m.type
-    if (key === 'status') return m.last_status
+    if (key === 'status') return isPaused(m) ? 'paused' : m.last_status
     if (key === 'response') return m.latest_response_time_ms ?? null
     if (key === 'uptime') return statsMap[m.id]?.uptime_pct ?? null
     if (key === 'checked') return m.last_checked_at || ''
@@ -144,9 +146,24 @@ export default function Monitors() {
     }
   }
 
-  const up = searched.filter(m => m.last_status === 'up').length
-  const down = searched.filter(m => m.last_status === 'down').length
-  const degraded = searched.filter(m => m.last_status === 'degraded').length
+  async function togglePause(m: Monitor) {
+    setTogglingId(m.id)
+    setError('')
+    try {
+      const updated = await api.setMonitorEnabled(m.id, isPaused(m))
+      setMonitors(prev => prev.map(x => x.id === m.id ? { ...x, ...updated } : x))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update monitor')
+    } finally {
+      setTogglingId('')
+    }
+  }
+
+  const active = searched.filter(m => !isPaused(m))
+  const paused = searched.filter(m => isPaused(m)).length
+  const up = active.filter(m => m.last_status === 'up').length
+  const down = active.filter(m => m.last_status === 'down').length
+  const degraded = active.filter(m => m.last_status === 'degraded').length
 
   useEffect(() => {
     let cancelled = false
@@ -185,6 +202,7 @@ export default function Monitors() {
     { id: 'up', label: 'Up', count: up },
     { id: 'degraded', label: 'Warning', count: degraded },
     { id: 'down', label: 'Down', count: down },
+    { id: 'paused', label: 'Paused', count: paused },
   ]
 
   return (
@@ -236,6 +254,7 @@ export default function Monitors() {
               <MetricCard label="Healthy" value={String(up)} accent="green" />
               <MetricCard label="Warning" value={String(degraded)} accent="yellow" />
               <MetricCard label="Down" value={String(down)} accent="red" />
+              <MetricCard label="Paused" value={String(paused)} />
             </div>
           )}
 
@@ -317,17 +336,20 @@ export default function Monitors() {
                 </thead>
                 <tbody>
                   {sorted.map(m => {
+                    const pausedRow = isPaused(m)
                     const st = statsMap[m.id]
                     const ms = m.latest_response_time_ms
-                    const sparkColor = m.last_status === 'down'
-                      ? colors.red
-                      : m.last_status === 'degraded'
-                        ? colors.yellow
-                        : colors.green
+                    const sparkColor = pausedRow
+                      ? colors.textMuted
+                      : m.last_status === 'down'
+                        ? colors.red
+                        : m.last_status === 'degraded'
+                          ? colors.yellow
+                          : colors.green
                     return (
                       <tr
                         key={m.id}
-                        className={m.last_status === 'down' ? 'row-down' : m.last_status === 'degraded' ? 'row-warn' : undefined}
+                        className={pausedRow ? undefined : m.last_status === 'down' ? 'row-down' : m.last_status === 'degraded' ? 'row-warn' : undefined}
                       >
                         <td>
                           <Link to={`/monitors/${m.id}`} style={styles.monitorLink}>
@@ -339,7 +361,7 @@ export default function Monitors() {
                           <TypeBadge type={m.type} url={m.url} />
                         </td>
                         <td>
-                          <StatusBadge status={badgeStatusFor(m.type, m.last_status)} />
+                          <StatusBadge status={badgeStatusFor(m.type, m.last_status, m.enabled)} />
                         </td>
                         <td>
                           <div style={styles.responseCell}>
@@ -355,7 +377,7 @@ export default function Monitors() {
                           {st ? `${st.uptime_pct.toFixed(2)}%` : '—'}
                         </td>
                         <td className="num" style={{ color: colors.textMuted }}>
-                          {m.last_checked_at ? timeAgo(m.last_checked_at) : 'Waiting'}
+                          {pausedRow ? 'Paused' : m.last_checked_at ? timeAgo(m.last_checked_at) : 'Waiting'}
                         </td>
                         <td className="col-actions">
                           <KebabMenu>
@@ -366,6 +388,16 @@ export default function Monitors() {
                                 </Link>
                                 {isAdmin && (
                                   <>
+                                    <button
+                                      type="button"
+                                      disabled={togglingId === m.id}
+                                      onClick={() => {
+                                        close()
+                                        togglePause(m)
+                                      }}
+                                    >
+                                      {pausedRow ? 'Resume' : 'Pause'}
+                                    </button>
                                     <button
                                       type="button"
                                       onClick={() => {

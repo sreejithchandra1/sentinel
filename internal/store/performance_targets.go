@@ -152,6 +152,14 @@ func (s *Store) DeletePerformanceTarget(id string) error {
 	return err
 }
 
+func (s *Store) SetPerformanceTargetEnabled(id string, enabled bool) error {
+	_, err := s.db.Exec(
+		`UPDATE performance_targets SET enabled=?, updated_at=? WHERE id=?`,
+		boolToInt(enabled), formatTime(time.Now().UTC()), id,
+	)
+	return err
+}
+
 func (s *Store) UpdatePerformanceTargetAfterCheck(id string, status models.MonitorStatus, consecutiveSlow int, checkedAt time.Time) error {
 	_, err := s.db.Exec(`
 		UPDATE performance_targets SET last_status=?, consecutive_slow=?, last_checked_at=?, updated_at=? WHERE id=?`,

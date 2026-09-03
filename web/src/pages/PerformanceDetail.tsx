@@ -24,6 +24,8 @@ export default function PerformanceDetail() {
   const [stats, setStats] = useState<PerformanceStats | null>(null)
   const [period, setPeriod] = useState('24h')
   const [editing, setEditing] = useState(false)
+  const [toggling, setToggling] = useState(false)
+  const [actionError, setActionError] = useState('')
   const periodRef = useRef(period)
   periodRef.current = period
 
@@ -39,6 +41,20 @@ export default function PerformanceDetail() {
   }, [id])
 
   const refreshRef = useAdaptivePoll(id, load, [period])
+
+  async function togglePause() {
+    if (!target) return
+    setToggling(true)
+    setActionError('')
+    try {
+      const updated = await api.setPerformanceTargetEnabled(target.id, target.enabled === false)
+      setTarget(updated)
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not update target')
+    } finally {
+      setToggling(false)
+    }
+  }
 
   if (!target) return <div style={{ color: colors.textMuted }}>Loading…</div>
 
@@ -58,7 +74,14 @@ export default function PerformanceDetail() {
       <PageHeader
         title={target.name}
         badges={
-          target.last_status === 'down' ? (
+          target.enabled === false ? (
+            <span style={{
+              color: colors.textMuted, background: 'rgba(156,163,175,0.12)',
+              padding: '4px 8px', borderRadius: radius.sm, fontSize: 12, fontWeight: 600,
+            }}>
+              Paused
+            </span>
+          ) : target.last_status === 'down' ? (
             <span style={{
               color: colors.red, background: colors.redDim,
               padding: '4px 8px', borderRadius: radius.sm, fontSize: 12, fontWeight: 600,
@@ -92,10 +115,19 @@ export default function PerformanceDetail() {
                 { id: '30d', label: '30d' },
               ]}
             />
-            {isAdmin && <button type="button" className="btn" onClick={() => setEditing(true)}>Edit</button>}
+            {isAdmin && (
+              <>
+                <button type="button" className="btn" disabled={toggling} onClick={togglePause}>
+                  {target.enabled === false ? 'Resume' : 'Pause'}
+                </button>
+                <button type="button" className="btn" onClick={() => setEditing(true)}>Edit</button>
+              </>
+            )}
           </>
         }
       />
+
+      {actionError && <div className="flash-error" role="alert" style={{ marginBottom: 16 }}>{actionError}</div>}
 
       <NextCheckCountdown
         target={target}

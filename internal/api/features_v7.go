@@ -283,11 +283,15 @@ func (s *Server) handlePublicStatus(w http.ResponseWriter, r *http.Request) {
 		if err != nil || m == nil {
 			continue
 		}
+		status := string(m.LastStatus)
+		if !m.Enabled {
+			status = "paused"
+		}
 		item := models.PublicMonitorStatus{
 			ID:     m.ID,
 			Name:   m.Name,
 			Type:   string(m.Type),
-			Status: string(m.LastStatus),
+			Status: status,
 		}
 		if m.LastCheckedAt != nil {
 			item.LastCheck = m.LastCheckedAt.UTC().Format(time.RFC3339)

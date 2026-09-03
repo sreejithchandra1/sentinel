@@ -17,7 +17,7 @@ import { useAuth } from '../context/AuthContext'
 import { chartGridStroke, chartTick, chartTooltipLabel, chartTooltipStyle } from '../chartTheme'
 import { colors, fonts } from '../theme'
 
-type HealthTab = 'all' | 'good' | 'slow' | 'failed' | 'collecting'
+type HealthTab = 'all' | 'good' | 'slow' | 'failed' | 'collecting' | 'paused'
 
 const healthColors: Record<PerformanceHealth, string> = {
   good: colors.green,
@@ -25,6 +25,7 @@ const healthColors: Record<PerformanceHealth, string> = {
   critical: colors.red,
   failed: colors.red,
   collecting: colors.textMuted,
+  paused: colors.textMuted,
 }
 
 function timeAgo(iso: string): string {
@@ -42,6 +43,7 @@ function formatBucket(iso: string, period: string) {
 }
 
 function targetHealth(t: PerformanceTarget, svc?: ServicePerformance): PerformanceHealth {
+  if (t.enabled === false) return 'paused'
   if (t.last_status === 'down') return 'failed'
   if (svc?.has_data) return svc.health
   const sla = t.slow_threshold_ms || 0
@@ -54,6 +56,7 @@ function targetHealth(t: PerformanceTarget, svc?: ServicePerformance): Performan
 function healthLabel(h: PerformanceHealth): string {
   if (h === 'good') return 'Within SLA'
   if (h === 'failed') return 'Failed'
+  if (h === 'paused') return 'Paused'
   if (h === 'warning' || h === 'critical') return 'Slow'
   return 'Collecting'
 }
@@ -71,6 +74,7 @@ export default function Performance() {
   const [deleteTargetRow, setDeleteTargetRow] = useState<PerformanceTarget | null>(null)
   const [targetForm, setTargetForm] = useState<string | 'new' | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [togglingId, setTogglingId] = useState('')
   const tableRef = useRef<HTMLTableElement>(null)
   const { widths, startResize, autoFit } = useColumnResize('performance', 7)
 
@@ -137,6 +141,7 @@ export default function Performance() {
   const slow = withHealth.filter(r => r.health === 'warning' || r.health === 'critical').length
   const failed = withHealth.filter(r => r.health === 'failed').length
   const collecting = withHealth.filter(r => r.health === 'collecting').length
+  const paused = withHealth.filter(r => r.health === 'paused').length
 
   const attention = (summary?.services || []).filter(s => {
     if (selectedCustomers.length > 0 && !scopedTargets.some(t => t.id === s.service_id)) return false
@@ -158,6 +163,7 @@ export default function Performance() {
     { id: 'slow', label: 'Slow', count: slow },
     { id: 'failed', label: 'Failed', count: failed },
     { id: 'collecting', label: 'Collecting', count: collecting },
+    { id: 'paused', label: 'Paused', count: paused },
   ]
 
   async function confirmDelete() {
@@ -171,6 +177,19 @@ export default function Performance() {
       setError(err instanceof Error ? err.message : 'Delete failed')
     } finally {
       setDeleting(false)
+    }
+  }
+
+  async function togglePause(t: PerformanceTarget) {
+    setTogglingId(t.id)
+    setError('')
+    try {
+      const updated = await api.setPerformanceTargetEnabled(t.id, t.enabled === false)
+      setTargets(prev => prev.map(x => x.id === t.id ? { ...x, ...updated } : x))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update target')
+    } finally {
+      setTogglingId('')
     }
   }
 
@@ -229,6 +248,7 @@ export default function Performance() {
               <MetricCard label="Within SLA" value={String(good)} accent="green" />
               <MetricCard label="Slow" value={String(slow)} accent="yellow" />
               <MetricCard label="Failed" value={String(failed)} accent="red" />
+              <MetricCard label="Paused" value={String(paused)} />
               <MetricCard label="Collecting" value={String(collecting)} />
             </div>
           )}
@@ -310,7 +330,7 @@ export default function Performance() {
                         <td className="num">
                           <span style={{
                             fontWeight: 600,
-                            color: health === 'failed' ? colors.red : health === 'good' || health === 'collecting' ? colors.text : colors.yellow,
+                            color: health === 'failed' ? colors.red : health === 'good' || health === 'collecting' || health === 'paused' ? colors.text : colors.yellow,
                           }}>
                             {typeof ms === 'number' ? `${ms} ms` : '—'}
                           </span>
@@ -322,7 +342,7 @@ export default function Performance() {
                           {t.slow_threshold_ms} ms
                         </td>
                         <td className="num" style={{ color: colors.textMuted }}>
-                          {t.last_checked_at ? timeAgo(t.last_checked_at) : 'Waiting'}
+                          {health === 'paused' ? 'Paused' : t.last_checked_at ? timeAgo(t.last_checked_at) : 'Waiting'}
                         </td>
                         <td className="col-actions">
                           <KebabMenu>
@@ -333,6 +353,16 @@ export default function Performance() {
                                 </Link>
                                 {isAdmin && (
                                   <>
+                                    <button
+                                      type="button"
+                                      disabled={togglingId === t.id}
+                                      onClick={() => {
+                                        close()
+                                        togglePause(t)
+                                      }}
+                                    >
+                                      {health === 'paused' ? 'Resume' : 'Pause'}
+                                    </button>
                                     <button
                                       type="button"
                                       onClick={() => {
