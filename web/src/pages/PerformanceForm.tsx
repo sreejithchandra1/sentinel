@@ -149,8 +149,13 @@ export default function PerformanceForm({
           <input type="checkbox" checked={form.follow_redirects ?? true} onChange={e => set('follow_redirects', e.target.checked)} />
           <span>Follow redirects</span>
         </label>
-        <Field label="Alert emails (comma-separated)">
-          <input className="input" value={form.alert_emails || ''} onChange={e => set('alert_emails', e.target.value)} />
+        <Field label="Alert emails (comma-separated, optional)">
+          <input
+            className="input"
+            value={form.alert_emails || ''}
+            onChange={e => set('alert_emails', e.target.value)}
+            placeholder="Leave blank to use this customer’s notification recipients"
+          />
         </Field>
         {id && (
           <label style={{ ...styles.checkbox, marginTop: 12 }}>

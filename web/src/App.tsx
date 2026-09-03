@@ -23,6 +23,7 @@ import SettingsServer from './pages/settings/SettingsServer'
 import SettingsStatusPage from './pages/settings/SettingsStatusPage'
 import SettingsTokens from './pages/settings/SettingsTokens'
 import SettingsAudit from './pages/settings/SettingsAudit'
+import SettingsEmailLog from './pages/settings/SettingsEmailLog'
 import SettingsCustomers from './pages/settings/SettingsCustomers'
 import Incidents from './pages/Incidents'
 import IncidentDetail from './pages/IncidentDetail'
@@ -31,6 +32,7 @@ import StatusPage from './pages/StatusPage'
 import Profile from './pages/Profile'
 import { api, Profile as AuthProfile } from './api'
 import { AuthProvider } from './context/AuthContext'
+import { applyFavicon } from './components/AppLogo'
 import { colors } from './theme'
 
 export default function App() {
@@ -41,6 +43,12 @@ export default function App() {
     const profile = await api.getProfile()
     setUser(profile)
     setAuthed(true)
+  }, [])
+
+  useEffect(() => {
+    api.publicBranding()
+      .then(b => applyFavicon(b.logo))
+      .catch(() => applyFavicon(null))
   }, [])
 
   useEffect(() => {
@@ -107,6 +115,7 @@ export default function App() {
             <Route path="status-page" element={<SettingsStatusPage />} />
             <Route path="tokens" element={<SettingsTokens />} />
             <Route path="audit" element={<SettingsAudit />} />
+            <Route path="email-log" element={<PlatformAdminRoute><SettingsEmailLog /></PlatformAdminRoute>} />
           </Route>
           <Route path="/profile" element={<Profile />} />
           <Route path="*" element={<Navigate to="/" replace />} />

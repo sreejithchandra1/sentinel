@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { ReactNode, useEffect, useState } from 'react'
-import AppLogo from './AppLogo'
+import AppLogo, { applyFavicon } from './AppLogo'
 import NavIcon from './NavIcon'
 import ProfileMenu from './ProfileMenu'
 import TableCellTooltip from './TableCellTooltip'
@@ -121,6 +121,11 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
   useEffect(() => {
     api.getGeneral().then(setOrg).catch(() => {})
   }, [location.pathname])
+
+  useEffect(() => {
+    if (!org) return
+    applyFavicon(org.logo)
+  }, [org])
 
   useEffect(() => {
     setNavOpen(false)

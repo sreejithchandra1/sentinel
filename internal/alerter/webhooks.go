@@ -73,6 +73,7 @@ func (a *Alerter) NotifyMonitor(m *models.Monitor, alertType, message string, re
 func (a *Alerter) NotifyMonitorMeta(m *models.Monitor, meta AlertMeta) error {
 	if a.inMaintenance(m.ID) {
 		log.Printf("alerter: %s alert skipped for %s: in maintenance", meta.Event, m.Name)
+		a.recordEmailSkip(alertLogMeta(m), "", meta.FallbackText(), "in maintenance")
 		return nil
 	}
 	meta.Name = m.Name
@@ -107,9 +108,11 @@ func (a *Alerter) NotifyMonitorMeta(m *models.Monitor, meta AlertMeta) error {
 			emailErr = err
 			log.Printf("alerter: email %s for %s: %v", meta.Event, m.Name, err)
 		}
+	} else {
+		a.recordEmailSkip(alertLogMeta(m), "", meta.FallbackText(), "email channel off for this monitor")
 	}
 	if m.NotifySlack {
-		a.fireSlack(m.TenantID, meta)
+		a.fireSlackForAlert(m.TenantID, meta)
 	}
 	if m.NotifyWebhooks {
 		a.fireWebhooks(meta.Event, payload)
@@ -119,6 +122,7 @@ func (a *Alerter) NotifyMonitorMeta(m *models.Monitor, meta AlertMeta) error {
 
 func (a *Alerter) HandlePerformanceResult(t *models.PerformanceTarget, result *models.PerformanceResult, prevStatus models.MonitorStatus) error {
 	if a.inMaintenance(t.ID) {
+		a.recordEmailSkip(perfLogMeta(t), "", slowSubject(t.Name), "in maintenance")
 		return nil
 	}
 
@@ -135,7 +139,13 @@ func (a *Alerter) HandlePerformanceResult(t *models.PerformanceTarget, result *m
 
 	if isSlow {
 		a.clearRecoveryStreak(t.ID)
-		if openSlow != nil || consecutive < threshold {
+		if openSlow != nil {
+			a.recordEmailSkip(perfLogMeta(t), "", slowSubject(t.Name), "incident already open")
+			return nil
+		}
+		if consecutive < threshold {
+			a.recordEmailPending(perfLogMeta(t), slowSubject(t.Name),
+				fmt.Sprintf("%d/%d consecutive slow checks", consecutive, threshold))
 			return nil
 		}
 		pct, total, slow, _ := a.store.GetPerformanceSlowStats(t.ID, time.Now().Add(-time.Hour))
@@ -171,6 +181,8 @@ func (a *Alerter) HandlePerformanceResult(t *models.PerformanceTarget, result *m
 
 	streak := a.incRecoveryStreak(t.ID)
 	if streak < threshold {
+		a.recordEmailPending(perfLogMeta(t), "[Sentinel] NORMAL: "+t.Name,
+			fmt.Sprintf("%d/%d successful checks", streak, threshold))
 		return nil
 	}
 	a.clearRecoveryStreak(t.ID)
@@ -213,16 +225,22 @@ func (a *Alerter) sendPerformanceAlert(t *models.PerformanceTarget, meta AlertMe
 
 	var emailErr error
 	a.refreshSMTP()
-	if a.cfg.Enabled && a.cfg.Host != "" {
+	logMeta := perfLogMeta(t)
+	subject := meta.FallbackText()
+	if !a.cfg.Enabled {
+		a.recordEmailSkip(logMeta, "", subject, "email alerts disabled")
+	} else if a.cfg.Host == "" {
+		a.recordEmailSkip(logMeta, "", subject, "SMTP not configured")
+	} else {
 		recipients := a.perfRecipients(t)
 		if len(recipients) == 0 {
-			emailErr = fmt.Errorf("no alert recipients — set alert emails on the target, SMTP Alert Recipients, or a profile email")
+			emailErr = fmt.Errorf("no alert recipients — set alert emails on the target, customer notifications, or SMTP Alert Recipients")
+			a.recordEmailSkip(logMeta, "", subject, emailErr.Error())
 			log.Printf("alerter: email %s for %s: %v", meta.Event, t.Name, emailErr)
 		} else {
-			subject := meta.FallbackText()
 			body := a.renderAlertEmail(meta)
 			for _, to := range recipients {
-				if err := a.sendSMTP(to, subject, body); err != nil {
+				if err := a.sendSMTP(to, subject, body, logMeta); err != nil {
 					emailErr = err
 					log.Printf("alerter: email %s for %s: %v", meta.Event, t.Name, err)
 					break
@@ -231,14 +249,14 @@ func (a *Alerter) sendPerformanceAlert(t *models.PerformanceTarget, meta AlertMe
 		}
 	}
 
-	a.fireSlack(t.TenantID, meta)
+	a.fireSlackForAlert(t.TenantID, meta)
 	a.fireWebhooks(meta.Event, payload)
 	return emailErr
 }
 
 func (a *Alerter) perfRecipients(t *models.PerformanceTarget) []string {
-	if emails := parseEmails(t.AlertEmails); len(emails) > 0 {
-		return emails
+	if t == nil {
+		return a.platformAlertEmails()
 	}
-	return a.defaultRecipients()
+	return a.resolveAlertEmails(t.AlertEmails, t.TenantID)
 }

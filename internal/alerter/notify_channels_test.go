@@ -134,3 +134,63 @@ func TestNotifyMonitor_TenantSlackScoping(t *testing.T) {
 		t.Fatalf("tenant alert hits=%d want 1", hits.Load())
 	}
 }
+
+func TestNotifyMonitor_TenantAlsoFiresPlatformSlack(t *testing.T) {
+	var tenantHits, platformHits atomic.Int32
+	tenantSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tenantHits.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer tenantSrv.Close()
+	platformSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		platformHits.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer platformSrv.Close()
+
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	if err := st.SaveSlackConfig("tenant-a", models.SlackConfig{
+		WebhookURL: tenantSrv.URL, Enabled: true, Events: []string{"all"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SaveSlackConfig("", models.SlackConfig{
+		WebhookURL: platformSrv.URL, Enabled: true, Events: []string{"all"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	a := New(st, models.SMTPConfig{Enabled: false}, models.SMTPConfig{}, "http://localhost")
+	_ = a.NotifyMonitor(&models.Monitor{
+		ID: "2", Name: "C", URL: "https://c.example", TenantID: "tenant-a",
+		NotifyEmail: true, NotifySlack: true, NotifyWebhooks: true,
+	}, "DOWN", "x", 1)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && (tenantHits.Load() == 0 || platformHits.Load() == 0) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if tenantHits.Load() != 1 || platformHits.Load() != 1 {
+		t.Fatalf("tenant=%d platform=%d want 1 each", tenantHits.Load(), platformHits.Load())
+	}
+
+	_ = a.NotifyMonitor(&models.Monitor{
+		ID: "1", Name: "P", URL: "https://p.example", TenantID: "",
+		NotifyEmail: true, NotifySlack: true, NotifyWebhooks: true,
+	}, "DOWN", "x", 1)
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && platformHits.Load() < 2 {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if tenantHits.Load() != 1 {
+		t.Fatalf("platform alert must not hit tenant slack: tenant=%d", tenantHits.Load())
+	}
+	if platformHits.Load() != 2 {
+		t.Fatalf("platformHits=%d want 2", platformHits.Load())
+	}
+}

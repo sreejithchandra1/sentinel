@@ -152,10 +152,14 @@ func (a *Alerter) HandleResult(m *models.Monitor, result *models.CheckResult) er
 
 		// Exactly one DOWN email per outage (while the incident stays open).
 		if failures < threshold {
+			log.Printf("alerter: down alert pending for %s: %d/%d consecutive failures", m.Name, failures, threshold)
+			a.recordEmailPending(alertLogMeta(m), downSubject(m.Name),
+				fmt.Sprintf("%d/%d consecutive failures", failures, threshold))
 			return nil
 		}
 		if open != nil {
 			log.Printf("alerter: down alert skipped for %s: incident already open", m.Name)
+			a.recordEmailSkip(alertLogMeta(m), "", downSubject(m.Name), "incident already open")
 			return nil
 		}
 		inc := &models.Incident{
@@ -186,6 +190,8 @@ func (a *Alerter) HandleResult(m *models.Monitor, result *models.CheckResult) er
 			}
 			m.LastStatus = models.StatusDown
 			log.Printf("alerter: recovery pending for %s: %d/%d successful checks", m.Name, streak, threshold)
+			a.recordEmailPending(alertLogMeta(m), recoverySubject(m.Name),
+				fmt.Sprintf("%d/%d successful checks", streak, threshold))
 			return nil
 		}
 		a.clearRecoveryStreak(m.ID)
@@ -223,15 +229,20 @@ func (a *Alerter) HandleResult(m *models.Monitor, result *models.CheckResult) er
 }
 
 func (a *Alerter) SendPasswordResetEmail(to, username, resetURL string) error {
+	meta := smtpLogMeta{Kind: models.EmailKindPassword}
 	if a.cfg.Host == "" {
-		return fmt.Errorf("SMTP not configured — configure email in Settings")
+		err := fmt.Errorf("SMTP not configured — configure email in Settings")
+		a.recordEmailSkip(meta, to, "[Sentinel] Password Reset", err.Error())
+		return err
 	}
 	if to == "" {
-		return fmt.Errorf("no email address")
+		err := fmt.Errorf("no email address")
+		a.recordEmailSkip(meta, to, "[Sentinel] Password Reset", err.Error())
+		return err
 	}
 	subject := "[Sentinel] Password Reset"
 	body := a.renderPasswordResetEmail(username, resetURL)
-	return a.sendSMTP(to, subject, body)
+	return a.sendSMTP(to, subject, body, meta)
 }
 
 func (a *Alerter) SendPasswordChangedEmail(to, username string) error {
@@ -240,24 +251,48 @@ func (a *Alerter) SendPasswordChangedEmail(to, username string) error {
 	}
 	subject := "[Sentinel] Password Changed"
 	body := a.renderPasswordChangedEmail(username)
-	return a.sendSMTP(to, subject, body)
+	return a.sendSMTP(to, subject, body, smtpLogMeta{Kind: models.EmailKindPassword})
 }
 
 func (a *Alerter) SendMFACodeEmail(to, username, code string) error {
+	meta := smtpLogMeta{Kind: models.EmailKindMFA}
 	if a.cfg.Host == "" {
-		return fmt.Errorf("SMTP not configured — configure email in Settings")
+		err := fmt.Errorf("SMTP not configured — configure email in Settings")
+		a.recordEmailSkip(meta, to, "[Sentinel] Your Verification Code", err.Error())
+		return err
 	}
 	if to == "" {
-		return fmt.Errorf("no email address")
+		err := fmt.Errorf("no email address")
+		a.recordEmailSkip(meta, to, "[Sentinel] Your Verification Code", err.Error())
+		return err
 	}
 	subject := "[Sentinel] Your Verification Code"
 	body := a.renderMFACodeEmail(username, code)
-	return a.sendSMTP(to, subject, body)
+	return a.sendSMTP(to, subject, body, meta)
+}
+
+func (a *Alerter) SendTestEmails(raw string) error {
+	a.refreshSMTP()
+	recipients := parseEmails(raw)
+	if len(recipients) == 0 {
+		err := fmt.Errorf("no alert recipients")
+		a.recordEmailSkip(smtpLogMeta{Kind: models.EmailKindTest}, "", "[Sentinel] Test Email", err.Error())
+		return err
+	}
+	for _, to := range recipients {
+		if err := a.SendTestEmail(to); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (a *Alerter) SendTestEmail(to string) error {
+	meta := smtpLogMeta{Kind: models.EmailKindTest}
 	if a.cfg.Host == "" {
-		return fmt.Errorf("SMTP not configured")
+		err := fmt.Errorf("SMTP not configured")
+		a.recordEmailSkip(meta, to, "[Sentinel] Test Email", err.Error())
+		return err
 	}
 	if to == "" {
 		to = a.cfg.From
@@ -271,25 +306,32 @@ func (a *Alerter) SendTestEmail(to string) error {
 		DashboardURL: a.liveDashboardURL(),
 		EventAt:      time.Now().UTC(),
 	})
-	return a.sendSMTP(to, subject, body)
+	return a.sendSMTP(to, subject, body, meta)
 }
 
 func (a *Alerter) sendAlertMeta(m *models.Monitor, meta AlertMeta) error {
 	a.refreshSMTP()
+	logMeta := alertLogMeta(m)
+	subject := meta.FallbackText()
 	if !a.cfg.Enabled {
-		return fmt.Errorf("email alerts disabled")
+		err := fmt.Errorf("email alerts disabled")
+		a.recordEmailSkip(logMeta, "", subject, err.Error())
+		return err
 	}
 	if a.cfg.Host == "" {
-		return fmt.Errorf("SMTP not configured — set host in Settings → Notifications → Email")
+		err := fmt.Errorf("SMTP not configured — set host in Settings → Notifications → Email")
+		a.recordEmailSkip(logMeta, "", subject, err.Error())
+		return err
 	}
 	recipients := a.recipients(m)
 	if len(recipients) == 0 {
-		return fmt.Errorf("no alert recipients — set alert emails on the monitor, SMTP Alert Recipients, or a profile email")
+		err := fmt.Errorf("no alert recipients — set alert emails on the monitor, customer notifications, or SMTP Alert Recipients")
+		a.recordEmailSkip(logMeta, "", subject, err.Error())
+		return err
 	}
-	subject := meta.FallbackText()
 	body := a.renderAlertEmail(meta)
 	for _, to := range recipients {
-		if err := a.sendSMTP(to, subject, body); err != nil {
+		if err := a.sendSMTP(to, subject, body, logMeta); err != nil {
 			return err
 		}
 	}
@@ -307,36 +349,86 @@ func parseEmails(raw string) []string {
 	return out
 }
 
-func (a *Alerter) defaultRecipients() []string {
-	if emails := parseEmails(a.cfg.AlertEmails); len(emails) > 0 {
-		return emails
-	}
-	if a.store != nil {
-		if emails, err := a.store.ListAlertProfileEmails(); err == nil && len(emails) > 0 {
-			return emails
+func mergeEmails(lists ...[]string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, list := range lists {
+		for _, e := range list {
+			key := strings.ToLower(e)
+			if key == "" || seen[key] {
+				continue
+			}
+			seen[key] = true
+			out = append(out, e)
 		}
 	}
-	return nil
+	return out
+}
+
+func (a *Alerter) platformAlertEmails() []string {
+	return parseEmails(a.cfg.AlertEmails)
+}
+
+func (a *Alerter) resolveAlertEmails(override, tenantID string) []string {
+	platform := a.platformAlertEmails()
+	overrideList := parseEmails(override)
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		if len(overrideList) > 0 {
+			return overrideList
+		}
+		return platform
+	}
+	primary := overrideList
+	if len(primary) == 0 && a.store != nil {
+		if c, err := a.store.GetCustomer(tenantID); err == nil && c != nil {
+			primary = parseEmails(c.AlertEmails)
+		}
+	}
+	return mergeEmails(primary, platform)
+}
+
+func (a *Alerter) defaultRecipients() []string {
+	return a.platformAlertEmails()
 }
 
 func (a *Alerter) recipients(m *models.Monitor) []string {
-	if emails := parseEmails(m.AlertEmails); len(emails) > 0 {
-		return emails
+	if m == nil {
+		return a.platformAlertEmails()
 	}
-	return a.defaultRecipients()
+	return a.resolveAlertEmails(m.AlertEmails, m.TenantID)
 }
 
-func (a *Alerter) sendSMTP(to, subject, htmlBody string) error {
+func (a *Alerter) sendSMTP(to, subject, htmlBody string, meta smtpLogMeta) error {
+	if meta.Kind == "" {
+		meta.Kind = models.EmailKindAlert
+	}
+	rec := models.EmailLog{
+		Kind:        meta.Kind,
+		ToAddr:      to,
+		Subject:     subject,
+		MonitorID:   meta.MonitorID,
+		MonitorName: meta.MonitorName,
+		TenantID:    meta.TenantID,
+	}
+	finish := func(status string, sendErr error) error {
+		rec.Status = status
+		if sendErr != nil {
+			rec.Error = sendErr.Error()
+			log.Printf("smtp: %s to=%s subject=%q: %v", strings.ToUpper(status), to, subject, sendErr)
+		} else {
+			log.Printf("smtp: SENT to=%s from=%s subject=%q host=%s:%d", to, a.cfg.From, subject, a.cfg.Host, a.cfg.Port)
+		}
+		a.recordEmail(rec)
+		return sendErr
+	}
+
 	a.refreshSMTP()
 	if a.cfg.Host == "" {
-		err := fmt.Errorf("SMTP not configured")
-		log.Printf("smtp: SKIP to=%s subject=%q: %v", to, subject, err)
-		return err
+		return finish(models.EmailStatusSkip, fmt.Errorf("SMTP not configured"))
 	}
 	if to == "" {
-		err := fmt.Errorf("empty recipient")
-		log.Printf("smtp: SKIP subject=%q: %v", subject, err)
-		return err
+		return finish(models.EmailStatusSkip, fmt.Errorf("empty recipient"))
 	}
 
 	addr := fmt.Sprintf("%s:%d", a.cfg.Host, a.cfg.Port)
@@ -345,9 +437,7 @@ func (a *Alerter) sendSMTP(to, subject, htmlBody string) error {
 		from = a.cfg.Username
 	}
 	if from == "" {
-		err := fmt.Errorf("SMTP from address not configured")
-		log.Printf("smtp: SKIP to=%s subject=%q: %v", to, subject, err)
-		return err
+		return finish(models.EmailStatusSkip, fmt.Errorf("SMTP from address not configured"))
 	}
 
 	var msg bytes.Buffer
@@ -367,11 +457,9 @@ func (a *Alerter) sendSMTP(to, subject, htmlBody string) error {
 		sendErr = a.sendSMTPStartTLS(addr, auth, from, to, msg.Bytes())
 	}
 	if sendErr != nil {
-		log.Printf("smtp: FAIL to=%s from=%s subject=%q host=%s: %v", to, from, subject, addr, sendErr)
-		return sendErr
+		return finish(models.EmailStatusFail, sendErr)
 	}
-	log.Printf("smtp: SENT to=%s from=%s subject=%q host=%s", to, from, subject, addr)
-	return nil
+	return finish(models.EmailStatusSent, nil)
 }
 
 func smtpAuth(cfg models.SMTPConfig) smtp.Auth {

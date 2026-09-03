@@ -52,6 +52,7 @@ type Customer struct {
 	Name         string    `json:"name"`
 	MonitorQuota int       `json:"monitor_quota"`
 	MonitorCount int       `json:"monitor_count,omitempty"`
+	AlertEmails  string    `json:"alert_emails"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
@@ -317,4 +318,29 @@ type PortDetails struct {
 	Host string `json:"host"`
 	Port int    `json:"port"`
 	Open bool   `json:"open"`
+}
+
+const (
+	EmailStatusSent    = "sent"
+	EmailStatusFail    = "fail"
+	EmailStatusSkip    = "skip"
+	EmailStatusPending = "pending"
+
+	EmailKindAlert    = "alert"
+	EmailKindTest     = "test"
+	EmailKindPassword = "password"
+	EmailKindMFA      = "mfa"
+)
+
+type EmailLog struct {
+	ID          string    `json:"id"`
+	Status      string    `json:"status"`
+	Kind        string    `json:"kind"`
+	ToAddr      string    `json:"to_addr"`
+	Subject     string    `json:"subject"`
+	Error       string    `json:"error,omitempty"`
+	MonitorID   string    `json:"monitor_id,omitempty"`
+	MonitorName string    `json:"monitor_name,omitempty"`
+	TenantID    string    `json:"tenant_id,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
 }

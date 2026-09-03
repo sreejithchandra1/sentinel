@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
-import AppLogo from '../components/AppLogo'
+import AppLogo, { applyFavicon } from '../components/AppLogo'
 import { api, OrgSettings } from '../api'
 import { colors } from '../theme'
 
@@ -21,7 +21,12 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
   const [brand, setBrand] = useState<OrgSettings | null>(null)
 
   useEffect(() => {
-    api.publicBranding().then(setBrand).catch(() => {})
+    api.publicBranding()
+      .then(b => {
+        setBrand(b)
+        applyFavicon(b.logo)
+      })
+      .catch(() => {})
   }, [])
 
   async function handleLogin(e: FormEvent) {

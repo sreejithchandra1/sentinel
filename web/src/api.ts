@@ -218,6 +218,7 @@ export interface Customer {
   name: string
   monitor_quota: number
   monitor_count?: number
+  alert_emails?: string
   created_at: string
 }
 
@@ -271,6 +272,19 @@ export interface SMTPConfig {
   alert_emails: string
   tls: boolean
   enabled: boolean
+}
+
+export interface EmailLogEntry {
+  id: string
+  status: 'sent' | 'fail' | 'skip' | 'pending' | string
+  kind: string
+  to_addr: string
+  subject: string
+  error?: string
+  monitor_id?: string
+  monitor_name?: string
+  tenant_id?: string
+  created_at: string
 }
 
 export interface WebhookConfig {
@@ -528,11 +542,27 @@ export const api = {
   performanceStats: (id: string, period = '24h') =>
     request<PerformanceStats>(`/api/performance/targets/${id}/stats?period=${period}`),
   listCustomers: () => request<Customer[]>('/api/settings/customers'),
-  createCustomer: (data: { name: string; monitor_quota?: number }) =>
+  createCustomer: (data: { name: string; monitor_quota?: number; alert_emails?: string }) =>
     request<Customer>('/api/settings/customers', { method: 'POST', body: JSON.stringify(data) }),
-  updateCustomer: (id: string, data: { name: string; monitor_quota: number }) =>
+  updateCustomer: (id: string, data: { name: string; monitor_quota: number; alert_emails?: string }) =>
     request<Customer>(`/api/settings/customers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteCustomer: (id: string) => request(`/api/settings/customers/${id}`, { method: 'DELETE' }),
+  getAlertRecipients: () => request<{ alert_emails: string }>('/api/settings/alert-recipients'),
+  putAlertRecipients: (data: { alert_emails: string }) =>
+    request<{ alert_emails: string }>('/api/settings/alert-recipients', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  testAlertRecipients: (alertEmails: string) =>
+    request('/api/settings/alert-recipients/test', {
+      method: 'POST',
+      body: JSON.stringify({ alert_emails: alertEmails }),
+    }),
+  testCustomerEmails: (id: string, alertEmails: string) =>
+    request(`/api/settings/customers/${id}/test-email`, {
+      method: 'POST',
+      body: JSON.stringify({ alert_emails: alertEmails }),
+    }),
   listTeam: () => request<TeamMember[]>('/api/settings/team'),
   createTeamMember: (data: CreateTeamMemberRequest) =>
     request<TeamMember>('/api/settings/team', { method: 'POST', body: JSON.stringify(data) }),
@@ -556,6 +586,25 @@ export const api = {
     request<SMTPConfig>('/api/settings/smtp', { method: 'PUT', body: JSON.stringify(cfg) }),
   testSMTP: (to: string) =>
     request('/api/settings/smtp/test', { method: 'POST', body: JSON.stringify({ to }) }),
+  listEmailLog: (opts?: {
+    limit?: number
+    offset?: number
+    status?: string
+    kind?: string
+    date?: string
+  }) => {
+    const params = new URLSearchParams()
+    params.set('limit', String(opts?.limit ?? 20))
+    params.set('offset', String(opts?.offset ?? 0))
+    if (opts?.status) params.set('status', opts.status)
+    if (opts?.kind) params.set('kind', opts.kind)
+    if (opts?.date) {
+      const { from, to } = localDayBounds(opts.date)
+      params.set('from', from)
+      params.set('to', to)
+    }
+    return request<PaginatedResults<EmailLogEntry>>(`/api/settings/smtp/log?${params}`)
+  },
   getNotificationsSummary: () => request<NotificationsSummary>('/api/settings/notifications'),
   getSlack: () => request<SlackConfig>('/api/settings/slack'),
   putSlack: (cfg: SlackConfig) =>

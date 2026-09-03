@@ -13,6 +13,7 @@ export default function SettingsCustomers() {
   const [editing, setEditing] = useState<Customer | null>(null)
   const [editName, setEditName] = useState('')
   const [editQuota, setEditQuota] = useState(1)
+  const [editEmails, setEditEmails] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
@@ -56,6 +57,7 @@ export default function SettingsCustomers() {
     setEditing(c)
     setEditName(c.name)
     setEditQuota(c.monitor_quota)
+    setEditEmails(c.alert_emails || '')
   }
 
   async function handleSaveEdit(e: FormEvent) {
@@ -64,12 +66,25 @@ export default function SettingsCustomers() {
     setError('')
     setMessage('')
     try {
-      await api.updateCustomer(editing.id, { name: editName, monitor_quota: editQuota })
+      await api.updateCustomer(editing.id, { name: editName, monitor_quota: editQuota, alert_emails: editEmails })
       setEditing(null)
       setMessage('Customer updated')
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Update failed')
+    }
+  }
+
+  async function handleTestEmails() {
+    if (!editing) return
+    setError('')
+    setMessage('')
+    try {
+      await api.testCustomerEmails(editing.id, editEmails)
+      setMessage('Test email sent')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Test failed'
+      setError(/too many requests/i.test(msg) ? 'Too many requests — wait a minute and try again.' : msg)
     }
   }
 
@@ -96,7 +111,7 @@ export default function SettingsCustomers() {
     <div className="page">
       <PageHeader
         title="Customers"
-        subtitle="Group monitors by customer and set monitor quotas."
+        subtitle="Group monitors by customer, set quotas, and default alert recipients. Alerts send after consecutive failures (default 2), not when you save an address."
       />
 
       {message && <div style={styles.ok}>{message}</div>}
@@ -151,7 +166,15 @@ export default function SettingsCustomers() {
                               onChange={e => setEditQuota(+e.target.value)}
                               style={{ width: 88 }}
                             />
+                            <input
+                              className="input input-compact"
+                              value={editEmails}
+                              onChange={e => setEditEmails(e.target.value)}
+                              placeholder="Alert emails"
+                              style={{ minWidth: 180, flex: 1 }}
+                            />
                             <button type="submit" className="btn btn-primary" style={styles.rowBtn}>Save</button>
+                            <button type="button" className="btn" style={styles.rowBtn} disabled={!editEmails.trim()} onClick={handleTestEmails}>Send test</button>
                             <button type="button" className="btn" style={styles.rowBtn} onClick={() => setEditing(null)}>Cancel</button>
                           </form>
                         </td>
