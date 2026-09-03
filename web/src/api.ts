@@ -113,7 +113,7 @@ export interface MonitorRowStats {
   points: number[]
 }
 
-export type PerformanceHealth = 'good' | 'warning' | 'critical' | 'collecting' | 'failed'
+export type PerformanceHealth = 'good' | 'warning' | 'critical' | 'collecting' | 'failed' | 'paused'
 
 export interface ServicePerformance {
   service_id: string
@@ -466,6 +466,8 @@ export const api = {
     request<Monitor>('/api/monitors', { method: 'POST', body: JSON.stringify(data) }),
   updateMonitor: (id: string, data: Partial<Monitor>) =>
     request<Monitor>(`/api/monitors/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  setMonitorEnabled: (id: string, enabled: boolean) =>
+    request<Monitor>(`/api/monitors/${id}/enabled`, { method: 'PUT', body: JSON.stringify({ enabled }) }),
   deleteMonitor: (id: string) => request(`/api/monitors/${id}`, { method: 'DELETE' }),
   results: (id: string, opts?: { limit?: number; offset?: number }) => {
     const limit = opts?.limit ?? 10
@@ -516,6 +518,11 @@ export const api = {
     request<PerformanceTarget>('/api/performance/targets', { method: 'POST', body: JSON.stringify(data) }),
   updatePerformanceTarget: (id: string, data: Partial<PerformanceTarget>) =>
     request<PerformanceTarget>(`/api/performance/targets/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  setPerformanceTargetEnabled: (id: string, enabled: boolean) =>
+    request<PerformanceTarget>(`/api/performance/targets/${id}/enabled`, {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    }),
   deletePerformanceTarget: (id: string) => request(`/api/performance/targets/${id}`, { method: 'DELETE' }),
   performanceResults: (id: string, opts?: {
     limit?: number

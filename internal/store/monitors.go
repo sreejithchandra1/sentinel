@@ -304,6 +304,14 @@ func (s *Store) DeleteMonitor(id string) error {
 	return err
 }
 
+func (s *Store) SetMonitorEnabled(id string, enabled bool) error {
+	_, err := s.db.Exec(
+		`UPDATE monitors SET enabled=?, updated_at=? WHERE id=?`,
+		boolToInt(enabled), formatTime(time.Now().UTC()), id,
+	)
+	return err
+}
+
 func (s *Store) ListEnabledMonitors() ([]models.Monitor, error) {
 	rows, err := s.db.Query(`SELECT ` + monitorColumns + ` FROM monitors WHERE enabled = 1`)
 	if err != nil {

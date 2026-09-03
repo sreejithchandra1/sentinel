@@ -14,7 +14,7 @@ import NextCheckCountdown from '../components/NextCheckCountdown'
 import PageHeader from '../components/PageHeader'
 import Surface from '../components/Panel'
 import SegmentedTabs from '../components/SegmentedTabs'
-import StatusBadge, { badgeStatusFor } from '../components/StatusBadge'
+import StatusBadge, { badgeStatusFor, isPaused } from '../components/StatusBadge'
 import TypeBadge from '../components/TypeBadge'
 import { useAuth } from '../context/AuthContext'
 import { chartGridStroke, chartTick, chartTooltipLabel, chartTooltipStyle } from '../chartTheme'
@@ -31,6 +31,8 @@ export default function MonitorDetail() {
   const [incidents, setIncidents] = useState<Incident[]>([])
   const [period, setPeriod] = useState('24h')
   const [editing, setEditing] = useState(false)
+  const [toggling, setToggling] = useState(false)
+  const [actionError, setActionError] = useState('')
   const periodRef = useRef(period)
   periodRef.current = period
 
@@ -68,6 +70,20 @@ export default function MonitorDetail() {
 
   const refreshRef = useAdaptivePoll(id, load, [period])
 
+  async function togglePause() {
+    if (!monitor) return
+    setToggling(true)
+    setActionError('')
+    try {
+      const updated = await api.setMonitorEnabled(monitor.id, isPaused(monitor))
+      setMonitor(updated)
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not update monitor')
+    } finally {
+      setToggling(false)
+    }
+  }
+
   useEffect(() => {
     if (!stats) return
     const t0 = performance.now()
@@ -93,18 +109,23 @@ export default function MonitorDetail() {
         badges={
           <>
             <TypeBadge type={type} url={monitor.url} />
-            <StatusBadge status={badgeStatusFor(type, monitor.last_status)} />
+            <StatusBadge status={badgeStatusFor(type, monitor.last_status, monitor.enabled)} />
             {monitor.invert && <span style={styles.invertBadge}>Inverted</span>}
           </>
         }
         subtitle={monitor.name}
         actions={isAdmin ? (
           <>
+            <button type="button" className="btn" disabled={toggling} onClick={togglePause}>
+              {isPaused(monitor) ? 'Resume' : 'Pause'}
+            </button>
             <button type="button" className="btn" onClick={() => setEditing(true)}>Edit</button>
             <DeleteMonitorButton id={monitor.id} name={monitor.name} variant="danger" />
           </>
         ) : undefined}
       />
+
+      {actionError && <div className="flash-error" role="alert" style={{ marginBottom: 16 }}>{actionError}</div>}
 
       <TypeMetrics monitor={monitor} stats={stats} latest={latest} />
 
@@ -182,6 +203,7 @@ export default function MonitorDetail() {
 
 function TypeMetrics({ monitor, stats, latest }: { monitor: Monitor; stats: MonitorStats | null; latest?: CheckResult }) {
   const type = monitor.type || 'http'
+  const paused = isPaused(monitor)
 
   if (type === 'ssl') {
     const ssl = parseSSL(latest?.details)
@@ -230,7 +252,7 @@ function TypeMetrics({ monitor, stats, latest }: { monitor: Monitor; stats: Moni
 
   return (
     <div className="grid-4" style={{ marginBottom: 24 }}>
-      <MetricCard label="Status" value={monitor.last_status.toUpperCase()} accent={monitor.last_status === 'up' ? 'green' : monitor.last_status === 'down' ? 'red' : 'yellow'} />
+      <MetricCard label="Status" value={paused ? 'PAUSED' : monitor.last_status.toUpperCase()} accent={paused ? 'default' : monitor.last_status === 'up' ? 'green' : monitor.last_status === 'down' ? 'red' : 'yellow'} />
       <MetricCard label="Last Check" value={monitor.last_checked_at ? timeAgo(monitor.last_checked_at) : '—'} />
       <MetricCard label="Interval" value={`${monitor.interval_seconds}s`} />
       <MetricCard label="Uptime" value={`${(stats?.uptime_pct ?? 0).toFixed(1)}%`} accent="green" />

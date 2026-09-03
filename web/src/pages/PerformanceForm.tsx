@@ -160,7 +160,12 @@ export default function PerformanceForm({
         {id && (
           <label style={{ ...styles.checkbox, marginTop: 12 }}>
             <input type="checkbox" checked={form.enabled ?? true} onChange={e => set('enabled', e.target.checked)} />
-            <span>Enabled</span>
+            <span>
+              Checks running
+              <span style={{ display: 'block', color: colors.textMuted, fontSize: 14, marginTop: 4 }}>
+                Uncheck to pause. History and settings are kept.
+              </span>
+            </span>
           </label>
         )}
         <div className="form-modal-actions">
