@@ -80,17 +80,9 @@ SMTP can also be configured from the Settings page in the dashboard.
 
 ## API
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/health` | Health check |
-| POST | `/api/auth/login` | Login |
-| POST | `/api/auth/logout` | Logout |
-| GET/POST | `/api/monitors` | List / create monitors |
-| GET/PUT/DELETE | `/api/monitors/:id` | Get, update, or delete a monitor |
-| GET | `/api/monitors/:id/results` | Check history |
-| GET | `/api/monitors/:id/stats` | Response time stats |
-| GET/PUT | `/api/settings/smtp` | SMTP config |
-| POST | `/api/settings/smtp/test` | Send test email |
+Full reference with curl examples for every endpoint: [docs/API.md](docs/API.md).
+
+Authenticate with a session cookie after login, or `Authorization: Bearer <token>` from **Settings → API Tokens**.
 
 ## Architecture
 

@@ -81,10 +81,12 @@ func (s *Server) handleCreatePerformanceTarget(w http.ResponseWriter, r *http.Re
 		jsonError(w, http.StatusForbidden, "forbidden")
 		return
 	}
+	s.store.InheritPerformanceHTTPAuth(&t)
 	if err := s.store.CreatePerformanceTarget(&t); err != nil {
 		jsonInternal(w, err)
 		return
 	}
+	redactPerformanceTarget(&t, user)
 	w.WriteHeader(http.StatusCreated)
 	jsonOK(w, t)
 }
@@ -136,6 +138,7 @@ func (s *Server) handleUpdatePerformanceTarget(w http.ResponseWriter, r *http.Re
 	existing.FollowRedirects = input.FollowRedirects
 	existing.Enabled = input.Enabled
 	existing.AlertEmails = input.AlertEmails
+	applyPerformanceHTTPAuthUpdate(existing, &input)
 	if input.AlertAfterSlow > 0 {
 		existing.AlertAfterSlow = input.AlertAfterSlow
 	}
@@ -148,11 +151,13 @@ func (s *Server) handleUpdatePerformanceTarget(w http.ResponseWriter, r *http.Re
 		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.store.FillPerformanceHTTPAuth(existing)
 
 	if err := s.store.UpdatePerformanceTarget(existing); err != nil {
 		jsonInternal(w, err)
 		return
 	}
+	redactPerformanceTarget(existing, user)
 	jsonOK(w, existing)
 }
 

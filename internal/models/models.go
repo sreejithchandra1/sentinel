@@ -106,6 +106,9 @@ type PerformanceTarget struct {
 	FollowRedirects bool          `json:"follow_redirects"`
 	Enabled         bool          `json:"enabled"`
 	AlertEmails     string        `json:"alert_emails"`
+	HTTPUsername    string        `json:"http_username,omitempty"`
+	HTTPPassword    string        `json:"http_password,omitempty"`
+	HTTPAuthSet     bool          `json:"http_auth_set,omitempty"`
 	TenantID        string        `json:"tenant_id,omitempty"`
 	AlertAfterSlow  int           `json:"alert_after_slow"`
 	ConsecutiveSlow int           `json:"consecutive_slow"`

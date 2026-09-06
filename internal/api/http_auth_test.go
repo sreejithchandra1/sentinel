@@ -22,6 +22,14 @@ func TestApplyHTTPAuthUpdateClearsWhenUsernameEmpty(t *testing.T) {
 	}
 }
 
+func TestApplyPerformanceHTTPAuthUpdateKeepsPasswordWhenBlank(t *testing.T) {
+	existing := &models.PerformanceTarget{HTTPUsername: "alice", HTTPPassword: "old"}
+	applyPerformanceHTTPAuthUpdate(existing, &models.PerformanceTarget{HTTPUsername: "alice", HTTPPassword: ""})
+	if existing.HTTPUsername != "alice" || existing.HTTPPassword != "old" {
+		t.Fatalf("got user=%q pass=%q", existing.HTTPUsername, existing.HTTPPassword)
+	}
+}
+
 func TestSanitizeMonitorHTTPAuthHidesPassword(t *testing.T) {
 	m := &models.Monitor{HTTPUsername: "alice", HTTPPassword: "secret"}
 	sanitizeMonitorHTTPAuth(m, &models.User{Role: models.RoleAdmin, TenantID: "t1"})

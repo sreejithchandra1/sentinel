@@ -2,6 +2,7 @@ package checker
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
 	"github.com/sentinel-monitoring/sentinel/internal/models"
@@ -39,5 +40,17 @@ func TestProbePerformanceBlockedHostIsDownNotSlow(t *testing.T) {
 	})
 	if got.Status != models.StatusDown {
 		t.Fatalf("status=%s want down (not degraded)", got.Status)
+	}
+}
+
+func TestProbePerformanceSendsBasicAuth(t *testing.T) {
+	req, err := http.NewRequest(http.MethodGet, "https://example.com/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyHTTPBasicAuth(req, &models.Monitor{HTTPUsername: "web-admin", HTTPPassword: "s3cret"})
+	user, pass, ok := req.BasicAuth()
+	if !ok || user != "web-admin" || pass != "s3cret" {
+		t.Fatalf("basic auth user=%q pass=%q ok=%v", user, pass, ok)
 	}
 }

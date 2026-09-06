@@ -2,13 +2,14 @@ package store
 
 import (
 	"database/sql"
+	"strings"
 	"time"
 
 	"github.com/sentinel-monitoring/sentinel/internal/models"
 )
 
 const perfTargetColumns = `id, name, url, method, interval_seconds, timeout_ms, slow_threshold_ms,
-follow_redirects, enabled, alert_emails, tenant_id, alert_after_slow, consecutive_slow,
+follow_redirects, enabled, alert_emails, http_username, http_password, tenant_id, alert_after_slow, consecutive_slow,
 last_status, last_checked_at, created_at, updated_at`
 
 func (s *Store) ListPerformanceTargets() ([]models.PerformanceTargetListItem, error) {
@@ -110,9 +111,10 @@ func (s *Store) CreatePerformanceTarget(t *models.PerformanceTarget) error {
 
 	_, err := s.db.Exec(`
 		INSERT INTO performance_targets (`+perfTargetColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.ID, t.Name, t.URL, t.Method, t.IntervalSeconds, t.TimeoutMs, t.SlowThresholdMs,
-		boolToInt(t.FollowRedirects), boolToInt(t.Enabled), t.AlertEmails, nullString(t.TenantID),
+		boolToInt(t.FollowRedirects), boolToInt(t.Enabled), t.AlertEmails,
+		t.HTTPUsername, t.HTTPPassword, nullString(t.TenantID),
 		t.AlertAfterSlow, t.ConsecutiveSlow,
 		string(t.LastStatus), nil, formatTime(t.CreatedAt), formatTime(t.UpdatedAt),
 	)
@@ -134,11 +136,12 @@ func (s *Store) UpdatePerformanceTarget(t *models.PerformanceTarget) error {
 	_, err := s.db.Exec(`
 		UPDATE performance_targets SET
 			name=?, url=?, method=?, interval_seconds=?, timeout_ms=?, slow_threshold_ms=?,
-			follow_redirects=?, enabled=?, alert_emails=?, tenant_id=?, alert_after_slow=?,
-			last_status=?, last_checked_at=?, updated_at=?
+			follow_redirects=?, enabled=?, alert_emails=?, http_username=?, http_password=?,
+			tenant_id=?, alert_after_slow=?, last_status=?, last_checked_at=?, updated_at=?
 		WHERE id=?`,
 		t.Name, t.URL, t.Method, t.IntervalSeconds, t.TimeoutMs, t.SlowThresholdMs,
-		boolToInt(t.FollowRedirects), boolToInt(t.Enabled), t.AlertEmails, nullString(t.TenantID),
+		boolToInt(t.FollowRedirects), boolToInt(t.Enabled), t.AlertEmails,
+		t.HTTPUsername, t.HTTPPassword, nullString(t.TenantID),
 		t.AlertAfterSlow, string(t.LastStatus), lastChecked, formatTime(t.UpdatedAt), t.ID,
 	)
 	return err
@@ -174,12 +177,12 @@ func scanPerformanceTargetRow(row interface {
 	var t models.PerformanceTarget
 	var lastStatus string
 	var followRedirects, enabled int
-	var alertEmails, tenantID, lastCheckedAt, createdAt, updatedAt sql.NullString
+	var alertEmails, httpUser, httpPass, tenantID, lastCheckedAt, createdAt, updatedAt sql.NullString
 	var latestRT sql.NullInt64
 
 	dest := []any{
 		&t.ID, &t.Name, &t.URL, &t.Method, &t.IntervalSeconds, &t.TimeoutMs, &t.SlowThresholdMs,
-		&followRedirects, &enabled, &alertEmails, &tenantID, &t.AlertAfterSlow, &t.ConsecutiveSlow,
+		&followRedirects, &enabled, &alertEmails, &httpUser, &httpPass, &tenantID, &t.AlertAfterSlow, &t.ConsecutiveSlow,
 		&lastStatus, &lastCheckedAt, &createdAt, &updatedAt,
 	}
 	if withLatest {
@@ -193,6 +196,8 @@ func scanPerformanceTargetRow(row interface {
 	t.FollowRedirects = intToBool(followRedirects)
 	t.Enabled = intToBool(enabled)
 	t.AlertEmails = nullableString(alertEmails)
+	t.HTTPUsername = nullableString(httpUser)
+	t.HTTPPassword = nullableString(httpPass)
 	t.TenantID = nullableString(tenantID)
 	if t.AlertAfterSlow < 1 {
 		t.AlertAfterSlow = 2
@@ -206,4 +211,56 @@ func scanPerformanceTargetRow(row interface {
 		t.UpdatedAt = ut
 	}
 	return &t, latestRT, nil
+}
+
+// HTTPAuthForURL returns basic-auth credentials from an HTTP monitor with the
+// same tenant and URL. Used when a performance target is created from the
+// monitor form (the API never returns the stored password).
+func (s *Store) HTTPAuthForURL(tenantID, rawURL string) (username, password string, ok bool) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return "", "", false
+	}
+	var user, pass sql.NullString
+	err := s.db.QueryRow(`
+		SELECT http_username, http_password FROM monitors
+		WHERE type = 'http' AND url = ? AND COALESCE(tenant_id, '') = ? AND http_username != ''
+		ORDER BY updated_at DESC LIMIT 1`,
+		rawURL, strings.TrimSpace(tenantID),
+	).Scan(&user, &pass)
+	if err != nil || strings.TrimSpace(user.String) == "" {
+		return "", "", false
+	}
+	return user.String, pass.String, true
+}
+
+func (s *Store) FillPerformanceHTTPAuth(t *models.PerformanceTarget) {
+	if t == nil {
+		return
+	}
+	if strings.TrimSpace(t.HTTPUsername) == "" || strings.TrimSpace(t.HTTPPassword) != "" {
+		return
+	}
+	_, pass, ok := s.HTTPAuthForURL(t.TenantID, t.URL)
+	if ok {
+		t.HTTPPassword = pass
+	}
+}
+
+// InheritPerformanceHTTPAuth copies username and password from a sibling HTTP
+// monitor when the performance target is missing either value.
+func (s *Store) InheritPerformanceHTTPAuth(t *models.PerformanceTarget) {
+	if t == nil {
+		return
+	}
+	user, pass, ok := s.HTTPAuthForURL(t.TenantID, t.URL)
+	if !ok {
+		return
+	}
+	if strings.TrimSpace(t.HTTPUsername) == "" {
+		t.HTTPUsername = user
+	}
+	if strings.TrimSpace(t.HTTPPassword) == "" {
+		t.HTTPPassword = pass
+	}
 }

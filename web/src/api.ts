@@ -149,6 +149,9 @@ export interface PerformanceTarget {
   follow_redirects: boolean
   enabled: boolean
   alert_emails?: string
+  http_username?: string
+  http_password?: string
+  http_auth_set?: boolean
   tenant_id?: string
   alert_after_slow?: number
   consecutive_slow?: number
