@@ -74,6 +74,46 @@ func TestBuildSlackPayload(t *testing.T) {
 	}
 }
 
+func TestRenderAlertEmailDNSChangeTables(t *testing.T) {
+	a := &Alerter{}
+	html := a.renderAlertEmail(AlertMeta{
+		Event:        "DNS CHANGE",
+		Name:         "AnusreeTravels",
+		URL:          "https://anusreetravels.com",
+		Message:      sampleDNSMsg,
+		DashboardURL: "http://localhost/incidents/1",
+		ResponseMs:   40,
+		IncidentID:   "deadbeef",
+		EventAt:      time.Now().UTC(),
+	})
+	for _, want := range []string{"DNS CHANGE", "Previous", "Current", "147.79.69.222", "147.79.69.29", "2a02:4780:1f:4ae:49b1:4f3b:b23f:aace"} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("missing %q in dns email html", want)
+		}
+	}
+	if strings.Contains(html, "A record changed from 147.79.69.222, 93.127.173.8 to") {
+		t.Fatal("email should not dump the semicolon sentence as the body")
+	}
+}
+
+func TestBuildSlackPayloadDNSChange(t *testing.T) {
+	raw, err := buildSlackPayload(AlertMeta{
+		Event:   "DNS CHANGE",
+		Name:    "AnusreeTravels",
+		Message: sampleDNSMsg,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	if !strings.Contains(s, "*Previous*") || !strings.Contains(s, "*Current*") || !strings.Contains(s, "147.79.69.29") {
+		t.Fatalf("slack payload missing dns tables: %s", s)
+	}
+	if strings.Contains(s, "_A record changed from") {
+		t.Fatal("slack should not italicize the run-on sentence")
+	}
+}
+
 func TestRenderAlertEmail(t *testing.T) {
 	a := &Alerter{}
 	html := a.renderAlertEmail(AlertMeta{

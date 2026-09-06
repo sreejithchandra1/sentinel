@@ -229,3 +229,72 @@ func TestSlowIncidentCanReferencePerformanceTarget(t *testing.T) {
 		t.Fatal("expected open slow incident for performance target")
 	}
 }
+
+func TestFillPerformanceHTTPAuthFromSiblingMonitor(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	m := &models.Monitor{
+		Name:         "authed",
+		URL:          "https://secret.example/dashboard",
+		HTTPUsername: "web-admin",
+		HTTPPassword: "s3cret",
+	}
+	if err := st.CreateMonitor(m); err != nil {
+		t.Fatal(err)
+	}
+	target := &models.PerformanceTarget{
+		Name:         "authed",
+		URL:          "https://secret.example/dashboard",
+		HTTPUsername: "web-admin",
+	}
+	st.FillPerformanceHTTPAuth(target)
+	if target.HTTPPassword != "s3cret" {
+		t.Fatalf("password=%q", target.HTTPPassword)
+	}
+	if err := st.CreatePerformanceTarget(target); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetPerformanceTarget(target.ID)
+	if err != nil || got == nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.HTTPUsername != "web-admin" || got.HTTPPassword != "s3cret" {
+		t.Fatalf("stored user=%q pass=%q", got.HTTPUsername, got.HTTPPassword)
+	}
+}
+
+func TestMigrateV22BackfillsPerformanceHTTPAuth(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	m := &models.Monitor{
+		Name:         "site",
+		URL:          "https://auth.example/",
+		HTTPUsername: "alice",
+		HTTPPassword: "p@ss",
+	}
+	if err := st.CreateMonitor(m); err != nil {
+		t.Fatal(err)
+	}
+	target := &models.PerformanceTarget{Name: "site", URL: "https://auth.example/"}
+	if err := st.CreatePerformanceTarget(target); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.migrateV22(); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetPerformanceTarget(target.ID)
+	if err != nil || got == nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.HTTPUsername != "alice" || got.HTTPPassword != "p@ss" {
+		t.Fatalf("backfill user=%q pass=%q", got.HTTPUsername, got.HTTPPassword)
+	}
+}

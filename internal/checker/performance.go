@@ -18,6 +18,8 @@ func (c *Checker) ProbePerformance(ctx context.Context, t *models.PerformanceTar
 		TimeoutMs:       t.TimeoutMs,
 		SlowThresholdMs: t.SlowThresholdMs,
 		FollowRedirects: t.FollowRedirects,
+		HTTPUsername:    t.HTTPUsername,
+		HTTPPassword:    t.HTTPPassword,
 		Enabled:         true,
 	}
 	if m.Method == "" {

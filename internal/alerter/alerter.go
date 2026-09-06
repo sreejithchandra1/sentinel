@@ -593,7 +593,25 @@ var emailTmpl = template.Must(template.New("email").Parse(`<!DOCTYPE html>
                     <div style="padding:8px 24px 20px;">
                       <div style="font-size:16px;font-weight:600;color:#ffffff;margin-bottom:4px;">{{.Name}}</div>
                       {{if .URL}}<div style="margin-bottom:16px;"><a href="{{.URL}}" style="color:#5b9fd4;text-decoration:none;font-size:13px;word-break:break-all;">{{.URL}}</a></div>{{end}}
-                      {{if .ShowMessage}}<div style="color:#a8b3c2;font-size:13px;margin-bottom:16px;">{{.Message}}</div>{{end}}
+                      {{if .HasDNS}}
+                      <div style="margin-bottom:16px;">
+                        {{range .DNSSections}}
+                        <div style="font-size:11px;letter-spacing:0.06em;color:#8b95a5;text-transform:uppercase;margin:0 0 6px;">{{.Title}}</div>
+                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;background:#12171e;border-radius:8px;margin-bottom:12px;">
+                          <tr>
+                            <td style="padding:8px 12px;width:64px;color:#8b95a5;font-size:11px;font-weight:600;border-bottom:1px solid #243041;">Type</td>
+                            <td style="padding:8px 12px;color:#8b95a5;font-size:11px;font-weight:600;border-bottom:1px solid #243041;">Value</td>
+                          </tr>
+                          {{range .Rows}}
+                          <tr>
+                            <td style="padding:8px 12px;width:64px;color:#8b95a5;font-size:13px;vertical-align:top;border-bottom:1px solid #243041;">{{.Type}}</td>
+                            <td style="padding:8px 12px;color:#f4f7fb;font-size:13px;font-family:ui-monospace,Menlo,monospace;word-break:break-all;border-bottom:1px solid #243041;">{{.Value}}</td>
+                          </tr>
+                          {{end}}
+                        </table>
+                        {{end}}
+                      </div>
+                      {{else if .ShowMessage}}<div style="color:#a8b3c2;font-size:13px;margin-bottom:16px;">{{.Message}}</div>{{end}}
                       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;background:#12171e;border-radius:8px;">
                         <tr>
                           <td style="padding:12px 14px;width:50%;vertical-align:top;border-bottom:1px solid #243041;">
@@ -635,11 +653,18 @@ var emailTmpl = template.Must(template.New("email").Parse(`<!DOCTYPE html>
 </body>
 </html>`))
 
+type emailDNSSection struct {
+	Title string
+	Rows  []DNSChangeRow
+}
+
 type emailData struct {
 	Title, Name, URL, Message, DashboardURL      string
 	Color, Field1Label, Field1Value, Field1Color string
 	Response, TimeLabel, TimeValue, Incident     string
 	ShowMessage                                  bool
+	HasDNS                                       bool
+	DNSSections                                  []emailDNSSection
 }
 
 func (a *Alerter) renderAlertEmail(meta AlertMeta) string {
@@ -651,6 +676,15 @@ func (a *Alerter) renderAlertEmail(meta AlertMeta) string {
 		field1Color = "#f4f7fb"
 	}
 	showMsg := meta.Message != "" && meta.Event != "RECOVERY" && meta.Event != "NORMAL" && meta.ResponseLabel() != "Timeout"
+	dns := ParseDNSChangeMessage(meta.Message)
+	var dnsSections []emailDNSSection
+	if dns != nil {
+		dnsSections = []emailDNSSection{
+			{Title: "Previous", Rows: dns.Previous},
+			{Title: "Current", Rows: dns.Current},
+		}
+		showMsg = false
+	}
 	var buf bytes.Buffer
 	_ = emailTmpl.Execute(&buf, emailData{
 		Title:        meta.Title(),
@@ -658,6 +692,8 @@ func (a *Alerter) renderAlertEmail(meta AlertMeta) string {
 		URL:          meta.URL,
 		Message:      meta.Message,
 		ShowMessage:  showMsg,
+		HasDNS:       dns != nil,
+		DNSSections:  dnsSections,
 		DashboardURL: meta.DashboardURL,
 		Color:        meta.Color(),
 		Field1Label:  field1Label,

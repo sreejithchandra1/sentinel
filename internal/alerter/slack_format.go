@@ -40,7 +40,11 @@ func buildSlackPayload(meta AlertMeta) ([]byte, error) {
 	ev := strings.ToUpper(meta.Event)
 	if meta.Message != "" && ev != "RECOVERY" && ev != "NORMAL" {
 		if meta.ResponseLabel() != "Timeout" {
-			bodyText += fmt.Sprintf("\n_%s_", meta.Message)
+			if dns := ParseDNSChangeMessage(meta.Message); dns != nil {
+				bodyText += "\n" + formatSlackDNSChanges(dns)
+			} else {
+				bodyText += fmt.Sprintf("\n_%s_", meta.Message)
+			}
 		}
 	}
 
@@ -86,6 +90,33 @@ func buildSlackPayload(meta AlertMeta) ([]byte, error) {
 		},
 	}
 	return json.Marshal(payload)
+}
+
+func formatSlackDNSChanges(t *DNSChangeTables) string {
+	if t == nil {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("*Previous*\n")
+	if len(t.Previous) == 0 {
+		b.WriteString("—\n")
+	} else {
+		for _, row := range t.Previous {
+			b.WriteString(fmt.Sprintf("`%s` %s\n", row.Type, row.Value))
+		}
+	}
+	b.WriteString("*Current*\n")
+	if len(t.Current) == 0 {
+		b.WriteString("—")
+	} else {
+		for i, row := range t.Current {
+			if i > 0 {
+				b.WriteByte('\n')
+			}
+			b.WriteString(fmt.Sprintf("`%s` %s", row.Type, row.Value))
+		}
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 func mrkdwnField(text string) map[string]any {

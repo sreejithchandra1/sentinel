@@ -116,6 +116,30 @@ export default function PerformanceForm({
         <Field label="URL">
           <input required type="url" className="input" value={form.url || ''} onChange={e => set('url', e.target.value)} placeholder="https://example.com" />
         </Field>
+        <div className="form-row">
+          <Field label="HTTP Basic Auth username">
+            <input
+              autoComplete="off"
+              className="input"
+              value={form.http_username || ''}
+              onChange={e => set('http_username', e.target.value)}
+              placeholder="Optional — htpasswd user"
+            />
+          </Field>
+          <Field label="HTTP Basic Auth password">
+            <input
+              type="password"
+              autoComplete="new-password"
+              className="input"
+              value={form.http_password || ''}
+              onChange={e => set('http_password', e.target.value)}
+              placeholder={form.http_auth_set ? 'Leave blank to keep current password' : 'Optional'}
+            />
+          </Field>
+        </div>
+        <p style={{ color: colors.textMuted, fontSize: 14, margin: '-8px 0 16px' }}>
+          Sent as an Authorization header for htpasswd-protected sites. Clear the username to disable.
+        </p>
         <Field label="Method">
           <select className="input" value={form.method || 'GET'} onChange={e => set('method', e.target.value)}>
             <option value="GET">GET</option>

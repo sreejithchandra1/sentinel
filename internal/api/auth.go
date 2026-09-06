@@ -136,26 +136,54 @@ func applyHTTPAuthUpdate(existing, input *models.Monitor) {
 	if existing == nil || input == nil {
 		return
 	}
-	user := strings.TrimSpace(input.HTTPUsername)
-	pass := input.HTTPPassword
+	applyHTTPAuthFields(&existing.HTTPUsername, &existing.HTTPPassword, input.HTTPUsername, input.HTTPPassword)
+}
+
+func applyPerformanceHTTPAuthUpdate(existing, input *models.PerformanceTarget) {
+	if existing == nil || input == nil {
+		return
+	}
+	applyHTTPAuthFields(&existing.HTTPUsername, &existing.HTTPPassword, input.HTTPUsername, input.HTTPPassword)
+}
+
+func applyHTTPAuthFields(existingUser, existingPass *string, inputUser, inputPass string) {
+	if existingUser == nil || existingPass == nil {
+		return
+	}
+	user := strings.TrimSpace(inputUser)
 	if user == "" {
-		existing.HTTPUsername = ""
-		existing.HTTPPassword = ""
+		*existingUser = ""
+		*existingPass = ""
 		return
 	}
-	existing.HTTPUsername = user
-	if pass == "" || strings.HasPrefix(pass, "****") {
+	*existingUser = user
+	if inputPass == "" || strings.HasPrefix(inputPass, "****") {
 		return
 	}
-	existing.HTTPPassword = pass
+	*existingPass = inputPass
 }
 
 func redactPerformanceTarget(t *models.PerformanceTarget, u *models.User) {
-	if t == nil || isPlatformAdmin(u) {
+	if t == nil {
+		return
+	}
+	sanitizePerformanceHTTPAuth(t, u)
+	if isPlatformAdmin(u) {
 		return
 	}
 	// keep alert_emails visible to customer admins for their own targets; hide for viewers
 	if u != nil && u.Role == models.RoleViewer {
 		t.AlertEmails = ""
+	}
+}
+
+func sanitizePerformanceHTTPAuth(t *models.PerformanceTarget, u *models.User) {
+	if t == nil {
+		return
+	}
+	t.HTTPAuthSet = strings.TrimSpace(t.HTTPUsername) != "" || t.HTTPPassword != ""
+	t.HTTPPassword = ""
+	if u != nil && u.Role == models.RoleViewer {
+		t.HTTPUsername = ""
 	}
 }
