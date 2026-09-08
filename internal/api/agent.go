@@ -187,6 +187,9 @@ func (s *Server) handleAgentIngest(w http.ResponseWriter, r *http.Request) {
 		jsonInternal(w, err)
 		return
 	}
+	if err := s.store.UpdateHostSnapshot(h.ID, payload.OSVersion, payload.KernelVersion, payload.RebootRequired, sample.Disks, payload.Services, payload.Security); err != nil {
+		log.Printf("agent ingest snapshot: %v", err)
+	}
 	if err := s.alerter.HandleHostIngestOnline(h, now); err != nil {
 		log.Printf("agent ingest recovery alert: %v", err)
 	}
@@ -214,6 +217,12 @@ func hostSampleFromPayload(h *models.Host, p *models.HostIngestPayload, now time
 	if h.CollectMemory {
 		sample.MemPercent = p.MemPercent
 	}
+	if h.CollectSwap {
+		sample.SwapPercent = p.SwapPercent
+	}
+	if h.CollectIOWait {
+		sample.IOWaitPercent = p.IOWaitPercent
+	}
 	if h.CollectLoad {
 		sample.Load1, sample.Load5, sample.Load15 = p.Load1, p.Load5, p.Load15
 	}
@@ -235,6 +244,9 @@ func hostSampleFromPayload(h *models.Host, p *models.HostIngestPayload, now time
 			disks = append(disks, models.HostDisk{Mount: mount, Percent: pct})
 			if pct > worst {
 				worst = pct
+			}
+			if len(disks) >= models.MaxHostDiskMounts {
+				break
 			}
 		}
 		sample.Disks = disks

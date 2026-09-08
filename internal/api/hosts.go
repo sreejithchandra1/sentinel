@@ -75,7 +75,10 @@ func (s *Server) handleCreateHost(w http.ResponseWriter, r *http.Request) {
 	h.Enabled = true
 	h.Status = models.HostPending
 	h.CollectCPU, h.CollectMemory, h.CollectDisk, h.CollectLoad = true, true, true, true
+	h.CollectSwap, h.CollectIOWait, h.CollectSecurity, h.CollectServices = true, true, true, true
 	h.AlertCPUEnabled, h.AlertMemoryEnabled, h.AlertDiskEnabled, h.AlertLoadEnabled = false, false, false, false
+	h.AlertSwapEnabled, h.AlertIOWaitEnabled, h.AlertAuthEnabled, h.AlertRootLoginEnabled, h.AlertRebootEnabled = false, false, false, false, false
+	h.AlertServiceEnabled = true
 	if isCustomerAdmin(user) {
 		h.TenantID = user.TenantID
 	} else if !isPlatformAdmin(user) {
@@ -128,18 +131,40 @@ func (s *Server) handleUpdateHost(w http.ResponseWriter, r *http.Request) {
 	existing.CollectMemory = patch.CollectMemory
 	existing.CollectDisk = patch.CollectDisk
 	existing.CollectLoad = patch.CollectLoad
+	existing.CollectSwap = patch.CollectSwap
+	existing.CollectIOWait = patch.CollectIOWait
+	existing.CollectSecurity = patch.CollectSecurity
+	existing.CollectServices = patch.CollectServices
 	existing.AlertCPUEnabled = patch.AlertCPUEnabled
+	existing.AlertCPUWarning = patch.AlertCPUWarning
 	existing.AlertCPUThreshold = patch.AlertCPUThreshold
 	existing.AlertCPUAfter = patch.AlertCPUAfter
 	existing.AlertMemoryEnabled = patch.AlertMemoryEnabled
+	existing.AlertMemoryWarning = patch.AlertMemoryWarning
 	existing.AlertMemoryThreshold = patch.AlertMemoryThreshold
 	existing.AlertMemoryAfter = patch.AlertMemoryAfter
 	existing.AlertDiskEnabled = patch.AlertDiskEnabled
+	existing.AlertDiskWarning = patch.AlertDiskWarning
 	existing.AlertDiskThreshold = patch.AlertDiskThreshold
 	existing.AlertDiskAfter = patch.AlertDiskAfter
 	existing.AlertLoadEnabled = patch.AlertLoadEnabled
+	existing.AlertLoadWarning = patch.AlertLoadWarning
 	existing.AlertLoadThreshold = patch.AlertLoadThreshold
 	existing.AlertLoadAfter = patch.AlertLoadAfter
+	existing.AlertSwapEnabled = patch.AlertSwapEnabled
+	existing.AlertSwapWarning = patch.AlertSwapWarning
+	existing.AlertSwapThreshold = patch.AlertSwapThreshold
+	existing.AlertSwapAfter = patch.AlertSwapAfter
+	existing.AlertIOWaitEnabled = patch.AlertIOWaitEnabled
+	existing.AlertIOWaitWarning = patch.AlertIOWaitWarning
+	existing.AlertIOWaitThreshold = patch.AlertIOWaitThreshold
+	existing.AlertIOWaitAfter = patch.AlertIOWaitAfter
+	existing.AlertAuthEnabled = patch.AlertAuthEnabled
+	existing.AlertAuthThreshold = patch.AlertAuthThreshold
+	existing.AlertRootLoginEnabled = patch.AlertRootLoginEnabled
+	existing.AlertRebootEnabled = patch.AlertRebootEnabled
+	existing.AlertServiceEnabled = patch.AlertServiceEnabled
+	existing.Services = models.NormalizeWatchedServices(patch.Services)
 	if isPlatformAdmin(user) {
 		existing.TenantID = strings.TrimSpace(patch.TenantID)
 	}

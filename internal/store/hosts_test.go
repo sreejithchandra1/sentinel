@@ -75,6 +75,9 @@ func TestHostCRUDAndEnroll(t *testing.T) {
 	if err != nil || len(stats.Points) != 1 || stats.Points[0].CPUPercent == nil {
 		t.Fatalf("stats: %v %+v", err, stats)
 	}
+	if len(stats.Points[0].Disks) != 1 || stats.Points[0].Disks[0].Mount != "/" {
+		t.Fatalf("disks: %+v", stats.Points[0].Disks)
+	}
 
 	stt, err := st.GetHostAlertState(h.ID, "cpu")
 	if err != nil || stt.ConsecutiveHigh != 0 {

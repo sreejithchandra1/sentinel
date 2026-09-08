@@ -39,6 +39,18 @@ func (m AlertMeta) Title() string {
 		return "HOST DISK HIGH"
 	case "HOST_LOAD":
 		return "HOST LOAD HIGH"
+	case "HOST_SWAP":
+		return "HOST SWAP HIGH"
+	case "HOST_IOWAIT":
+		return "HOST DISK IO WAIT"
+	case "HOST_AUTH":
+		return "HOST AUTH FAILURES"
+	case "HOST_ROOT_LOGIN":
+		return "HOST ROOT LOGIN"
+	case "HOST_REBOOT":
+		return "HOST REBOOT REQUIRED"
+	case "HOST_SERVICE":
+		return "HOST SERVICE DOWN"
 	default:
 		return strings.ToUpper(m.Event)
 	}
@@ -46,7 +58,8 @@ func (m AlertMeta) Title() string {
 
 func (m AlertMeta) Color() string {
 	switch strings.ToUpper(strings.TrimSpace(m.Event)) {
-	case "DOWN", "SLOW", "HOST_OFFLINE", "HOST_CPU", "HOST_MEMORY", "HOST_DISK", "HOST_LOAD":
+	case "DOWN", "SLOW", "HOST_OFFLINE", "HOST_CPU", "HOST_MEMORY", "HOST_DISK", "HOST_LOAD",
+		"HOST_SWAP", "HOST_IOWAIT", "HOST_AUTH", "HOST_ROOT_LOGIN", "HOST_REBOOT", "HOST_SERVICE":
 		return "#E01E5A"
 	case "RECOVERY", "NORMAL":
 		return "#2EB67D"
@@ -67,8 +80,10 @@ func (m AlertMeta) StatusLabel() string {
 		return "OK"
 	case "HOST_OFFLINE":
 		return "OFFLINE"
-	case "HOST_CPU", "HOST_MEMORY", "HOST_DISK", "HOST_LOAD":
+	case "HOST_CPU", "HOST_MEMORY", "HOST_DISK", "HOST_LOAD", "HOST_SWAP", "HOST_IOWAIT":
 		return "HIGH"
+	case "HOST_AUTH", "HOST_ROOT_LOGIN", "HOST_REBOOT", "HOST_SERVICE":
+		return "ALERT"
 	default:
 		return strings.ToUpper(m.Event)
 	}

@@ -34,8 +34,13 @@ function alertsOn(h: Host): string {
   const on: string[] = []
   if (h.alert_cpu_enabled) on.push('CPU')
   if (h.alert_memory_enabled) on.push('Mem')
+  if (h.alert_swap_enabled) on.push('Swap')
   if (h.alert_disk_enabled) on.push('Disk')
   if (h.alert_load_enabled) on.push('Load')
+  if (h.alert_iowait_enabled) on.push('I/O')
+  if (h.alert_auth_enabled) on.push('Auth')
+  if (h.alert_root_login_enabled) on.push('Root')
+  if (h.alert_service_enabled && (h.services || []).length) on.push('Svc')
   return on.length ? on.join(', ') : 'Collecting only'
 }
 

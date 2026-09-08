@@ -39,6 +39,9 @@ export default function IncidentStatus({ incident }: { incident: Incident }) {
         return <span style={styles.critical}>Critical</span>
       }
     }
+    if (type === 'host_root_login' || type === 'host_auth' || type === 'host_service' || (incident.message || '').toLowerCase().includes('critical')) {
+      return <span style={styles.critical}>Critical</span>
+    }
     return <span style={styles.warning}>Warning</span>
   }
 

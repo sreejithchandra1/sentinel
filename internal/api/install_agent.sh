@@ -65,6 +65,13 @@ if ! id -u "$AGENT_USER" >/dev/null 2>&1; then
   fi
 fi
 
+extra_groups=""
+if getent group adm >/dev/null 2>&1; then extra_groups="${extra_groups} adm"; fi
+if getent group systemd-journal >/dev/null 2>&1; then extra_groups="${extra_groups} systemd-journal"; fi
+if [ -n "$extra_groups" ]; then
+  usermod -aG $extra_groups "$AGENT_USER" >/dev/null 2>&1 || true
+fi
+
 install -o root -g root -m 0755 "${tmp}/sentinel-agent" "$BIN_PATH"
 install -d -o root -g "$AGENT_USER" -m 0750 "$CONF_DIR"
 umask 077
@@ -76,6 +83,11 @@ EOF
 chown root:"$AGENT_USER" "$CONF_FILE"
 chmod 0640 "$CONF_FILE"
 
+supp_line=""
+if [ -n "$extra_groups" ]; then
+  supp_line="SupplementaryGroups=${extra_groups}"
+fi
+
 cat > "$UNIT_PATH" <<EOF
 [Unit]
 Description=Sentinel host agent
@@ -86,6 +98,7 @@ Wants=network-online.target
 Type=simple
 User=${AGENT_USER}
 Group=${AGENT_USER}
+${supp_line}
 ExecStart=${BIN_PATH} -config ${CONF_FILE}
 Restart=on-failure
 RestartSec=10

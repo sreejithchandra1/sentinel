@@ -52,6 +52,10 @@ func main() {
 		CollectMemory:   true,
 		CollectDisk:     true,
 		CollectLoad:     true,
+		CollectSwap:     true,
+		CollectIOWait:   true,
+		CollectSecurity: true,
+		CollectServices: true,
 	}
 
 	stop := make(chan os.Signal, 1)
@@ -74,7 +78,7 @@ func main() {
 			log.Printf("ingest: %v", err)
 			return
 		}
-		collect = sanitizeAgentConfig(next)
+		collect = models.SanitizeAgentConfig(next)
 		nextInterval := time.Duration(collect.IntervalSeconds) * time.Second
 		if nextInterval != interval {
 			interval = nextInterval
@@ -105,16 +109,6 @@ func loadConfig(path string) (*agentConfig, error) {
 	cfg.ServerURL = strings.TrimSpace(cfg.ServerURL)
 	cfg.Token = strings.TrimSpace(cfg.Token)
 	return &cfg, nil
-}
-
-func sanitizeAgentConfig(cfg models.HostAgentConfig) models.HostAgentConfig {
-	return models.HostAgentConfig{
-		IntervalSeconds: models.ClampHostInterval(cfg.IntervalSeconds),
-		CollectCPU:      cfg.CollectCPU,
-		CollectMemory:   cfg.CollectMemory,
-		CollectDisk:     cfg.CollectDisk,
-		CollectLoad:     cfg.CollectLoad,
-	}
 }
 
 func ingest(client *http.Client, cfg *agentConfig, payload *models.HostIngestPayload) (models.HostAgentConfig, error) {

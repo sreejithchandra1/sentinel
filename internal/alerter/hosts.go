@@ -3,6 +3,7 @@ package alerter
 import (
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/sentinel-monitoring/sentinel/internal/models"
@@ -116,32 +117,181 @@ func (a *Alerter) HandleHostSample(h *models.Host, sample *models.HostSample) er
 		}
 	}
 	if h.CollectCPU && h.AlertCPUEnabled && sample.CPUPercent != nil {
-		setErr(a.evalHostGauge(h, sample, "cpu", *sample.CPUPercent, h.AlertCPUThreshold, h.AlertCPUThreshold-5, h.AlertCPUAfter, models.IncidentHostCPU, "HOST_CPU", "CPU"))
+		setErr(a.evalHostGauge(h, sample, "cpu", *sample.CPUPercent, h.AlertCPUWarning, h.AlertCPUThreshold, h.AlertCPUAfter, models.IncidentHostCPU, "HOST_CPU", "CPU", "%", ""))
 	}
 	if h.CollectMemory && h.AlertMemoryEnabled && sample.MemPercent != nil {
-		setErr(a.evalHostGauge(h, sample, "memory", *sample.MemPercent, h.AlertMemoryThreshold, h.AlertMemoryThreshold-5, h.AlertMemoryAfter, models.IncidentHostMemory, "HOST_MEMORY", "Memory"))
+		setErr(a.evalHostGauge(h, sample, "memory", *sample.MemPercent, h.AlertMemoryWarning, h.AlertMemoryThreshold, h.AlertMemoryAfter, models.IncidentHostMemory, "HOST_MEMORY", "Memory", "%", ""))
 	}
-	if h.CollectDisk && h.AlertDiskEnabled && sample.DiskPercent != nil {
-		setErr(a.evalHostGauge(h, sample, "disk", *sample.DiskPercent, h.AlertDiskThreshold, h.AlertDiskThreshold-5, h.AlertDiskAfter, models.IncidentHostDisk, "HOST_DISK", "Disk"))
+	if h.CollectSwap && h.AlertSwapEnabled && sample.SwapPercent != nil && *sample.SwapPercent > 0 {
+		setErr(a.evalHostGauge(h, sample, "swap", *sample.SwapPercent, h.AlertSwapWarning, h.AlertSwapThreshold, h.AlertSwapAfter, models.IncidentHostSwap, "HOST_SWAP", "Swap", "%", ""))
+	}
+	if h.CollectIOWait && h.AlertIOWaitEnabled && sample.IOWaitPercent != nil {
+		setErr(a.evalHostGauge(h, sample, "iowait", *sample.IOWaitPercent, h.AlertIOWaitWarning, h.AlertIOWaitThreshold, h.AlertIOWaitAfter, models.IncidentHostIOWait, "HOST_IOWAIT", "Disk I/O wait", "%", ""))
+	}
+	if h.CollectDisk && h.AlertDiskEnabled && len(sample.Disks) > 0 {
+		worst, detail := worstDisk(sample.Disks, h.AlertDiskWarning)
+		if worst != nil {
+			setErr(a.evalHostGauge(h, sample, "disk", *worst, h.AlertDiskWarning, h.AlertDiskThreshold, h.AlertDiskAfter, models.IncidentHostDisk, "HOST_DISK", "Disk", "%", detail))
+		}
+	} else if h.CollectDisk && h.AlertDiskEnabled && sample.DiskPercent != nil {
+		setErr(a.evalHostGauge(h, sample, "disk", *sample.DiskPercent, h.AlertDiskWarning, h.AlertDiskThreshold, h.AlertDiskAfter, models.IncidentHostDisk, "HOST_DISK", "Disk", "%", ""))
 	}
 	if h.CollectLoad && h.AlertLoadEnabled && sample.Load1 != nil {
-		thresh := models.HostLoadThreshold(h, sample.NumCPU)
-		setErr(a.evalHostGauge(h, sample, "load", *sample.Load1, thresh, thresh*0.8, h.AlertLoadAfter, models.IncidentHostLoad, "HOST_LOAD", "Load"))
+		warn := models.HostLoadWarning(h, sample.NumCPU)
+		crit := models.HostLoadCritical(h, sample.NumCPU)
+		detail := fmt.Sprintf(" (%d CPU cores)", sample.NumCPU)
+		if sample.NumCPU < 1 {
+			detail = ""
+		}
+		setErr(a.evalHostGauge(h, sample, "load", *sample.Load1, warn, crit, h.AlertLoadAfter, models.IncidentHostLoad, "HOST_LOAD", "Load", "", detail))
+	}
+	if h.CollectSecurity && h.Security != nil {
+		if h.AlertAuthEnabled {
+			setErr(a.evalHostAuth(h, sample))
+		}
+		if h.AlertRootLoginEnabled {
+			setErr(a.evalHostFlag(h, sample, "root_login", h.Security.RootLogins5m > 0,
+				models.IncidentHostRootLogin, "HOST_ROOT_LOGIN", rootLoginMessage(h.Security)))
+		}
+	}
+	if h.AlertRebootEnabled {
+		setErr(a.evalHostFlag(h, sample, "reboot", h.RebootRequired,
+			models.IncidentHostReboot, "HOST_REBOOT", "Kernel or package updates require a reboot"))
+	}
+	if h.CollectServices && h.AlertServiceEnabled && len(h.Services) > 0 {
+		setErr(a.evalHostServices(h, sample))
 	}
 	return first
+}
+
+func worstDisk(disks []models.HostDisk, warning float64) (*float64, string) {
+	var worst float64
+	var over []string
+	for _, d := range disks {
+		if d.Percent > worst {
+			worst = d.Percent
+		}
+		if d.Percent >= warning {
+			over = append(over, fmt.Sprintf("%s %.0f%%", d.Mount, d.Percent))
+		}
+	}
+	if worst <= 0 && len(disks) == 0 {
+		return nil, ""
+	}
+	v := worst
+	detail := ""
+	if len(over) > 0 {
+		detail = " [" + strings.Join(over, ", ") + "]"
+	}
+	return &v, detail
+}
+
+func rootLoginMessage(sec *models.HostSecurity) string {
+	msg := fmt.Sprintf("Root login detected (%d in 5 minutes)", sec.RootLogins5m)
+	if sec.LastRootLogin != "" {
+		msg += " last at " + sec.LastRootLogin
+	}
+	return msg
+}
+
+func (a *Alerter) evalHostAuth(h *models.Host, sample *models.HostSample) error {
+	sec := h.Security
+	if sec == nil {
+		return nil
+	}
+	total := sec.SSHFailed5m + sec.SudoFailed5m + sec.AuthFailed5m
+	limit := h.AlertAuthThreshold
+	if limit < 1 {
+		limit = models.DefaultHostAuthFailLimit
+	}
+	msg := fmt.Sprintf("Authentication failures in 5 minutes: SSH %d, sudo %d, other %d (limit %d)",
+		sec.SSHFailed5m, sec.SudoFailed5m, sec.AuthFailed5m, limit)
+	return a.evalHostFlag(h, sample, "auth", total >= limit, models.IncidentHostAuth, "HOST_AUTH", msg)
+}
+
+func (a *Alerter) evalHostServices(h *models.Host, sample *models.HostSample) error {
+	var down []string
+	byName := map[string]models.HostServiceStatus{}
+	for _, st := range h.ServiceStatus {
+		byName[st.Name] = st
+	}
+	for _, name := range h.Services {
+		st, ok := byName[name]
+		if !ok || (st.Active != "active" && st.Active != "activating") {
+			state := "missing"
+			if ok {
+				state = st.Active
+			}
+			down = append(down, name+" ("+state+")")
+		}
+	}
+	msg := "Watched services not active: " + strings.Join(down, ", ")
+	return a.evalHostFlag(h, sample, "service", len(down) > 0, models.IncidentHostService, "HOST_SERVICE", msg)
+}
+
+func (a *Alerter) evalHostFlag(h *models.Host, sample *models.HostSample, metric string, bad bool, incType models.IncidentType, event, msg string) error {
+	open, err := a.store.GetOpenIncident(h.ID, incType)
+	if err != nil {
+		return err
+	}
+	if !bad {
+		if open == nil {
+			return nil
+		}
+		started := open.StartedAt
+		_ = a.store.ResolveOpenIncidents(h.ID, incType, sample.CollectedAt)
+		return hostNotify(a, h, AlertMeta{
+			Event:      "RECOVERY",
+			Message:    "Recovered: " + msg,
+			IncidentID: open.ID,
+			EventAt:    sample.CollectedAt,
+			StartedAt:  &started,
+		})
+	}
+	if open != nil {
+		return nil
+	}
+	inc := &models.Incident{
+		MonitorID: h.ID,
+		Type:      incType,
+		Message:   msg,
+		StartedAt: sample.CollectedAt,
+	}
+	if err := a.store.CreateIncident(inc); err != nil {
+		return err
+	}
+	return hostNotify(a, h, AlertMeta{
+		Event:      event,
+		Message:    msg,
+		IncidentID: inc.ID,
+		EventAt:    sample.CollectedAt,
+	})
 }
 
 func (a *Alerter) evalHostGauge(
 	h *models.Host,
 	sample *models.HostSample,
 	metric string,
-	value, threshold, recoverBelow float64,
+	value, warning, critical float64,
 	after int,
 	incType models.IncidentType,
-	event, label string,
+	event, label, unit, extra string,
 ) error {
 	if after < 1 {
 		after = models.DefaultHostCPUAfter
+	}
+	if warning <= 0 {
+		warning = critical
+	}
+	if critical <= 0 {
+		critical = warning
+	}
+	recoverBelow := warning - 5
+	if recoverBelow < 0 {
+		recoverBelow = warning * 0.8
+		if recoverBelow < 0 {
+			recoverBelow = 0
+		}
 	}
 	state, err := a.store.GetHostAlertState(h.ID, metric)
 	if err != nil {
@@ -153,7 +303,7 @@ func (a *Alerter) evalHostGauge(
 	}
 
 	switch {
-	case value >= threshold:
+	case value >= warning:
 		state.ConsecutiveHigh++
 		state.ConsecutiveOK = 0
 		if err := a.store.UpsertHostAlertState(state); err != nil {
@@ -163,10 +313,15 @@ func (a *Alerter) evalHostGauge(
 			return nil
 		}
 		if state.ConsecutiveHigh < after {
-			log.Printf("alerter: host %s %s alert pending: %d/%d (value=%.1f threshold=%.1f)", h.DisplayName(), metric, state.ConsecutiveHigh, after, value, threshold)
+			log.Printf("alerter: host %s %s alert pending: %d/%d (value=%.1f warning=%.1f critical=%.1f)", h.DisplayName(), metric, state.ConsecutiveHigh, after, value, warning, critical)
 			return nil
 		}
-		msg := fmt.Sprintf("%s %.1f is above threshold %.1f for %d consecutive samples", label, value, threshold, state.ConsecutiveHigh)
+		msg := fmt.Sprintf("%s warning: %.1f%s (warning %.1f / critical %.1f) for %d consecutive samples%s",
+			label, value, unit, warning, critical, state.ConsecutiveHigh, extra)
+		if value >= critical {
+			msg = fmt.Sprintf("%s critical: %.1f%s (warning %.1f / critical %.1f) for %d consecutive samples%s",
+				label, value, unit, warning, critical, state.ConsecutiveHigh, extra)
+		}
 		inc := &models.Incident{
 			MonitorID: h.ID,
 			Type:      incType,
@@ -199,7 +354,7 @@ func (a *Alerter) evalHostGauge(
 		_ = a.store.ResolveOpenIncidents(h.ID, incType, sample.CollectedAt)
 		return hostNotify(a, h, AlertMeta{
 			Event:      "RECOVERY",
-			Message:    fmt.Sprintf("%s recovered (%.1f below %.1f)", label, value, recoverBelow),
+			Message:    fmt.Sprintf("%s recovered (%.1f%s below %.1f%s)", label, value, unit, recoverBelow, unit),
 			IncidentID: open.ID,
 			EventAt:    sample.CollectedAt,
 			StartedAt:  &started,

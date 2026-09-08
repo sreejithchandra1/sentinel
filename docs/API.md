@@ -150,7 +150,7 @@ curl -sS "$BASE/api/heartbeat/THE_TOKEN"
 
 ## Hosts (agent)
 
-Linux agents push CPU, memory, disk, and load to Sentinel. The agent does **not** listen on a port. Install uses a **15-minute, single-use enroll token**; ingest uses a separate hashed token stored in `/etc/sentinel-agent/config.yaml` (`0640`, root-owned). The service runs as `sentinel-agent` (`nologin`). Metric alerts require a **sustained** threshold (default 5 minutes) — a single spike does not page.
+Linux agents push CPU, memory, swap, per-mount disk, load (vs CPU cores), and disk I/O wait. They also report OS/kernel, reboot-required, auth-log counters, and systemd unit status. The agent does **not** listen on a port. Install uses a **15-minute, single-use enroll token**; ingest uses a separate hashed token stored in `/etc/sentinel-agent/config.yaml` (`0640`, root-owned). The service runs as `sentinel-agent` (`nologin`, plus `adm` / `systemd-journal` for read-only log access). Gauge alerts use **warning 80 / critical 90** by default and require a **sustained** threshold (default 5 minutes) — a single spike does not page. Load is `load1 / CPU cores` (a load of 8 is 200% on 4 cores and 25% on 32 cores). Auth burst alerts fire when SSH+sudo+PAM failures in 5 minutes meet the limit (default 50).
 
 ### `POST /api/hosts`
 
@@ -167,7 +167,7 @@ Any user (tenant scoped). Query `?customer=` for platform admins.
 
 ### `GET /api/hosts/{id}` — `PUT /api/hosts/{id}` — `PUT /api/hosts/{id}/enabled` — `DELETE /api/hosts/{id}`
 
-Same auth as monitors. PUT replaces collection flags, alert toggles, thresholds, `alert_*_after` (consecutive samples), notify channels, and interval (30–300s).
+Same auth as monitors. PUT replaces collection flags, warning/critical thresholds, `alert_*_after` (consecutive samples), `services` (systemd unit names), security alert toggles, notify channels, and interval (30–300s). Host JSON includes latest `disks`, `security`, `service_status`, `os_version`, `kernel_version`, and `reboot_required`.
 
 ### `POST /api/hosts/{id}/enroll`
 
@@ -175,7 +175,7 @@ Admin. Invalidates unused enroll tokens and issues a new install command.
 
 ### `GET /api/hosts/{id}/stats?period=24h`
 
-Chart points (`24h`, `7d`, `30d`): `cpu_percent`, `mem_percent`, `disk_percent`, `load1`.
+Chart points (`24h`, `7d`, `30d`): `cpu_percent`, `mem_percent`, `swap_percent`, `iowait_percent`, `disk_percent` (worst mount), `disks` (per mount), `load1`, `num_cpu`.
 
 ### `GET /api/hosts/install.sh?token=`
 
@@ -193,9 +193,9 @@ Public. Consumes the enroll token (once). Body: `{ "token", "hostname", "os", "a
 
 ### `POST /api/agent/ingest`
 
-`Authorization: Bearer <ingest_token>`. Metrics JSON only. Response `{ "ok": true, "config": { "interval_seconds", "collect_cpu", "collect_memory", "collect_disk", "collect_load" } }`. Unknown JSON fields are ignored. The agent must not honor commands, URLs, or `server_url` from this response.
+`Authorization: Bearer <ingest_token>`. Metrics JSON only. Response `{ "ok": true, "config": { "interval_seconds", collect flags, "services" } }`. Unknown JSON fields are ignored. The agent must not honor commands, URLs, or `server_url` from this response.
 
-Incident types: `host_offline`, `host_cpu`, `host_memory`, `host_disk`, `host_load`.
+Incident types: `host_offline`, `host_cpu`, `host_memory`, `host_swap`, `host_disk`, `host_load`, `host_iowait`, `host_auth`, `host_root_login`, `host_reboot`, `host_service`.
 
 ---
 

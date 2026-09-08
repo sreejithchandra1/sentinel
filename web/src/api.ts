@@ -357,14 +357,38 @@ export interface Incident {
 
 export type HostStatus = 'pending' | 'online' | 'offline'
 
+export interface HostDisk {
+  mount: string
+  percent: number
+}
+
+export interface HostServiceStatus {
+  name: string
+  active: string
+  sub?: string
+}
+
+export interface HostSecurity {
+  logs_readable: boolean
+  ssh_failed_5m: number
+  sudo_failed_5m: number
+  auth_failed_5m: number
+  root_logins_5m: number
+  last_root_login?: string
+}
+
 export interface Host {
   id: string
   name: string
   hostname: string
   tenant_id?: string
   os?: string
+  os_version?: string
+  kernel_version?: string
   arch?: string
   agent_version?: string
+  num_cpu?: number
+  reboot_required?: boolean
   last_seen_at?: string
   status: HostStatus
   enabled: boolean
@@ -375,18 +399,43 @@ export interface Host {
   collect_memory: boolean
   collect_disk: boolean
   collect_load: boolean
+  collect_swap: boolean
+  collect_iowait: boolean
+  collect_security: boolean
+  collect_services: boolean
   alert_cpu_enabled: boolean
+  alert_cpu_warning: number
   alert_cpu_threshold: number
   alert_cpu_after: number
   alert_memory_enabled: boolean
+  alert_memory_warning: number
   alert_memory_threshold: number
   alert_memory_after: number
   alert_disk_enabled: boolean
+  alert_disk_warning: number
   alert_disk_threshold: number
   alert_disk_after: number
   alert_load_enabled: boolean
+  alert_load_warning: number
   alert_load_threshold: number
   alert_load_after: number
+  alert_swap_enabled: boolean
+  alert_swap_warning: number
+  alert_swap_threshold: number
+  alert_swap_after: number
+  alert_iowait_enabled: boolean
+  alert_iowait_warning: number
+  alert_iowait_threshold: number
+  alert_iowait_after: number
+  alert_auth_enabled: boolean
+  alert_auth_threshold: number
+  alert_root_login_enabled: boolean
+  alert_reboot_enabled: boolean
+  alert_service_enabled: boolean
+  services?: string[]
+  disks?: HostDisk[]
+  service_status?: HostServiceStatus[]
+  security?: HostSecurity
   alert_emails: string
   notify_email: boolean
   notify_slack: boolean
@@ -402,8 +451,12 @@ export interface HostStatsPoint {
   timestamp: string
   cpu_percent?: number
   mem_percent?: number
+  swap_percent?: number
+  iowait_percent?: number
   load1?: number
   disk_percent?: number
+  disks?: HostDisk[]
+  num_cpu?: number
 }
 
 export interface HostStats {

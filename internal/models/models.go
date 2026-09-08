@@ -39,17 +39,23 @@ const (
 type IncidentType string
 
 const (
-	IncidentDown        IncidentType = "down"
-	IncidentSlow        IncidentType = "slow"
-	IncidentRecovery    IncidentType = "recovery"
-	IncidentSSLExpiry   IncidentType = "ssl_expiry"
-	IncidentDNSChange   IncidentType = "dns_change"
-	IncidentCertChange  IncidentType = "cert_change"
-	IncidentHostOffline IncidentType = "host_offline"
-	IncidentHostCPU     IncidentType = "host_cpu"
-	IncidentHostMemory  IncidentType = "host_memory"
-	IncidentHostDisk    IncidentType = "host_disk"
-	IncidentHostLoad    IncidentType = "host_load"
+	IncidentDown          IncidentType = "down"
+	IncidentSlow          IncidentType = "slow"
+	IncidentRecovery      IncidentType = "recovery"
+	IncidentSSLExpiry     IncidentType = "ssl_expiry"
+	IncidentDNSChange     IncidentType = "dns_change"
+	IncidentCertChange    IncidentType = "cert_change"
+	IncidentHostOffline   IncidentType = "host_offline"
+	IncidentHostCPU       IncidentType = "host_cpu"
+	IncidentHostMemory    IncidentType = "host_memory"
+	IncidentHostDisk      IncidentType = "host_disk"
+	IncidentHostLoad      IncidentType = "host_load"
+	IncidentHostSwap      IncidentType = "host_swap"
+	IncidentHostIOWait    IncidentType = "host_iowait"
+	IncidentHostAuth      IncidentType = "host_auth"
+	IncidentHostRootLogin IncidentType = "host_root_login"
+	IncidentHostReboot    IncidentType = "host_reboot"
+	IncidentHostService   IncidentType = "host_service"
 )
 
 type Customer struct {

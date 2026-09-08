@@ -2,6 +2,7 @@ package alerter
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -78,20 +79,26 @@ func TestHandleHostSample_IgnoresSpikes(t *testing.T) {
 		t.Fatalf("no duplicate alert, got %v", alerts)
 	}
 
-	// Dip into hysteresis band should not recover yet; need 3 samples below 85.
+	// Dip into hysteresis band should not recover yet; need 3 samples below warning-5 (75).
 	if err := a.HandleHostSample(h, sample(5, 88)); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.HandleHostSample(h, sample(6, 80)); err != nil {
 		t.Fatal(err)
 	}
+	if len(alerts) != 1 {
+		t.Fatalf("at or above warning should not recover, got %v", alerts)
+	}
 	if err := a.HandleHostSample(h, sample(7, 70)); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.HandleHostSample(h, sample(8, 60)); err != nil {
 		t.Fatal(err)
 	}
 	if len(alerts) != 1 {
 		t.Fatalf("need 3 consecutive recoveries, got %v", alerts)
 	}
-	if err := a.HandleHostSample(h, sample(8, 60)); err != nil {
+	if err := a.HandleHostSample(h, sample(9, 50)); err != nil {
 		t.Fatal(err)
 	}
 	if len(alerts) != 2 || alerts[1] != "RECOVERY" {
@@ -145,5 +152,75 @@ func TestHandleHostOfflineCheck_Hysteresis(t *testing.T) {
 	}
 	if len(alerts) != 2 || alerts[1] != "RECOVERY" {
 		t.Fatalf("alerts=%v", alerts)
+	}
+}
+
+func TestHostLoadThresholdsUseCPUCores(t *testing.T) {
+	h := &models.Host{AlertLoadWarning: 80, AlertLoadThreshold: 0}
+	if g := models.HostLoadWarning(h, 4); g != 3.2 {
+		t.Fatalf("warning=%v, want 3.2", g)
+	}
+	if g := models.HostLoadCritical(h, 4); g != 3.6 {
+		t.Fatalf("critical=%v, want 3.6", g)
+	}
+	if g := models.HostLoadCritical(h, 32); g != 28.8 {
+		t.Fatalf("32-core critical=%v, want 28.8", g)
+	}
+}
+
+func TestHandleHostSample_DiskNamesMount(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	h := &models.Host{
+		Name: "web", Enabled: true, CollectDisk: true, AlertDiskEnabled: true,
+		AlertDiskWarning: 80, AlertDiskThreshold: 90, AlertDiskAfter: 1, NotifyEmail: true,
+	}
+	if err := st.CreateHost(h); err != nil {
+		t.Fatal(err)
+	}
+	a := New(st, models.SMTPConfig{}, models.SMTPConfig{}, "http://localhost")
+	a.notifyHook = func(*models.Monitor, string, string, int) error { return nil }
+	now := time.Now().UTC()
+	err = a.HandleHostSample(h, &models.HostSample{
+		HostID: h.ID, CollectedAt: now,
+		Disks: []models.HostDisk{{Mount: "/", Percent: 82}, {Mount: "/backup", Percent: 97}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	open, err := st.GetOpenIncident(h.ID, models.IncidentHostDisk)
+	if err != nil || open == nil {
+		t.Fatalf("want disk incident: %v %+v", err, open)
+	}
+	if !strings.Contains(open.Message, "/backup") {
+		t.Fatalf("message should name the mount: %s", open.Message)
+	}
+}
+
+func TestHandleHostSample_AuthBurst(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	h := &models.Host{
+		Name: "web", Enabled: true, CollectSecurity: true, AlertAuthEnabled: true,
+		AlertAuthThreshold: 50, NotifyEmail: true,
+		Security: &models.HostSecurity{LogsReadable: true, SSHFailed5m: 40, SudoFailed5m: 15},
+	}
+	if err := st.CreateHost(h); err != nil {
+		t.Fatal(err)
+	}
+	a := New(st, models.SMTPConfig{}, models.SMTPConfig{}, "http://localhost")
+	a.notifyHook = func(*models.Monitor, string, string, int) error { return nil }
+	if err := a.HandleHostSample(h, &models.HostSample{HostID: h.ID, CollectedAt: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	open, err := st.GetOpenIncident(h.ID, models.IncidentHostAuth)
+	if err != nil || open == nil {
+		t.Fatalf("want auth incident: %v %+v", err, open)
 	}
 }
