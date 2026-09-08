@@ -1,7 +1,7 @@
 import { FormEvent, useCallback, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
-  Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { api, Host, HostStats } from '../api'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -32,6 +32,12 @@ function fmt(n?: number, digits = 1): string {
 function hostBadge(h: Host): string {
   if (h.enabled === false) return 'paused'
   return h.status || 'pending'
+}
+
+function formatBucket(iso: string, period: string): string {
+  const d = new Date(iso)
+  if (period === '24h') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
 
 export default function HostDetail() {
@@ -118,7 +124,7 @@ export default function HostDetail() {
 
   const latest = stats?.points?.[stats.points.length - 1]
   const chartData = (stats?.points || []).map(p => ({
-    time: new Date(p.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    time: formatBucket(p.timestamp, period),
     cpu: p.cpu_percent ?? null,
     mem: p.mem_percent ?? null,
     disk: p.disk_percent ?? null,
@@ -215,26 +221,57 @@ export default function HostDetail() {
         <MetricCard label="Load 1" value={fmt(latest?.load1, 2)} />
       </div>
 
-      <Panel style={{ marginBottom: 20 }}>
-        <h3 className="panel-title">Metrics</h3>
-        <div style={{ height: 300 }}>
-          {chartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData}>
-                <CartesianGrid stroke={chartGridStroke} vertical={false} />
-                <XAxis dataKey="time" tick={chartTick} axisLine={false} tickLine={false} />
-                <YAxis tick={chartTick} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={chartTooltipStyle} labelStyle={chartTooltipLabel} />
-                <Area type="monotone" dataKey="cpu" stroke={colors.brand} fill={colors.brand} fillOpacity={0.15} name="CPU %" />
-                <Area type="monotone" dataKey="mem" stroke={colors.blue} fill={colors.blue} fillOpacity={0.12} name="Memory %" />
-                <Area type="monotone" dataKey="disk" stroke={colors.yellow} fill={colors.yellow} fillOpacity={0.12} name="Disk %" />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <div style={styles.empty}>Waiting for samples…</div>
+      {!host.collect_cpu && !host.collect_memory && !host.collect_disk && !host.collect_load ? (
+        <Panel style={{ marginBottom: 20 }}>
+          <div style={styles.empty}>Turn on collection below to see metric graphs.</div>
+        </Panel>
+      ) : (
+        <div className="grid-2" style={{ marginBottom: 20, alignItems: 'stretch' }}>
+          {host.collect_cpu && (
+            <MetricChart
+              title="CPU"
+              data={chartData}
+              dataKey="cpu"
+              color={colors.brand}
+              unit="%"
+              domain={[0, 100]}
+              threshold={host.alert_cpu_enabled ? host.alert_cpu_threshold : undefined}
+            />
+          )}
+          {host.collect_memory && (
+            <MetricChart
+              title="Memory"
+              data={chartData}
+              dataKey="mem"
+              color={colors.blue}
+              unit="%"
+              domain={[0, 100]}
+              threshold={host.alert_memory_enabled ? host.alert_memory_threshold : undefined}
+            />
+          )}
+          {host.collect_disk && (
+            <MetricChart
+              title="Disk"
+              data={chartData}
+              dataKey="disk"
+              color={colors.yellow}
+              unit="%"
+              domain={[0, 100]}
+              threshold={host.alert_disk_enabled ? host.alert_disk_threshold : undefined}
+            />
+          )}
+          {host.collect_load && (
+            <MetricChart
+              title="Load"
+              data={chartData}
+              dataKey="load"
+              color={colors.green}
+              unit=""
+              threshold={host.alert_load_enabled && host.alert_load_threshold > 0 ? host.alert_load_threshold : undefined}
+            />
           )}
         </div>
-      </Panel>
+      )}
 
       {isAdmin && (
         <Panel>
@@ -336,6 +373,82 @@ export default function HostDetail() {
         </Panel>
       )}
     </div>
+  )
+}
+
+type ChartPoint = { time: string; cpu: number | null; mem: number | null; disk: number | null; load: number | null }
+
+function MetricChart({
+  title,
+  data,
+  dataKey,
+  color,
+  unit,
+  threshold,
+  domain,
+}: {
+  title: string
+  data: ChartPoint[]
+  dataKey: keyof Omit<ChartPoint, 'time'>
+  color: string
+  unit: string
+  threshold?: number
+  domain?: [number, number]
+}) {
+  const gradId = `host-grad-${dataKey}`
+  const has = data.some(p => p[dataKey] != null)
+  return (
+    <Panel style={{ marginBottom: 0 }}>
+      <h3 className="panel-title">{title}</h3>
+      <div style={{ height: 240 }}>
+        {has ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={data}>
+              <defs>
+                <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={color} stopOpacity={0.28} />
+                  <stop offset="100%" stopColor={color} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke={chartGridStroke} vertical={false} />
+              <XAxis dataKey="time" tick={chartTick} axisLine={false} tickLine={false} />
+              <YAxis
+                domain={domain}
+                unit={unit}
+                tick={chartTick}
+                axisLine={false}
+                tickLine={false}
+                width={unit ? 52 : 40}
+              />
+              <Tooltip
+                contentStyle={chartTooltipStyle}
+                labelStyle={chartTooltipLabel}
+                formatter={(value: number) => [`${fmt(value, dataKey === 'load' ? 2 : 1)}${unit}`, title]}
+              />
+              {threshold != null && (
+                <ReferenceLine
+                  y={threshold}
+                  stroke={colors.red}
+                  strokeDasharray="4 4"
+                  label={{ value: 'Alert', fill: colors.red, fontSize: 12 }}
+                />
+              )}
+              <Area
+                type="monotone"
+                dataKey={dataKey}
+                stroke={color}
+                fill={`url(#${gradId})`}
+                strokeWidth={2}
+                name={title}
+                connectNulls
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        ) : (
+          <div style={styles.empty}>Waiting for samples…</div>
+        )}
+      </div>
+    </Panel>
   )
 }
 
