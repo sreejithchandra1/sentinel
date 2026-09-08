@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { api, Incident, Monitor } from '../api'
+import { api, Incident, Monitor, incidentSubjectPath } from '../api'
 import { ColGroup, ResizableTh, useColumnResize, useTableSort } from '../components/ColumnResize'
 import IncidentFilters, { IncidentFilterValues } from '../components/IncidentFilters'
 import IncidentStatus from '../components/IncidentStatus'
@@ -153,7 +153,7 @@ export default function Incidents() {
                   >
                     <td>
                       <Link
-                        to={`/monitors/${inc.monitor_id}`}
+                        to={incidentSubjectPath(inc)}
                         style={styles.link}
                         onClick={e => e.stopPropagation()}
                       >

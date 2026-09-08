@@ -148,6 +148,57 @@ curl -sS "$BASE/api/heartbeat/THE_TOKEN"
 
 ---
 
+## Hosts (agent)
+
+Linux agents push CPU, memory, disk, and load to Sentinel. The agent does **not** listen on a port. Install uses a **15-minute, single-use enroll token**; ingest uses a separate hashed token stored in `/etc/sentinel-agent/config.yaml` (`0640`, root-owned). The service runs as `sentinel-agent` (`nologin`). Metric alerts require a **sustained** threshold (default 5 minutes) — a single spike does not page.
+
+### `POST /api/hosts`
+
+Admin. Creates a pending host and returns `enroll_token`, `enroll_expires_at`, and `install_command`.
+
+```bash
+curl -sS -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name":"web-1"}' "$BASE/api/hosts"
+```
+
+### `GET /api/hosts`
+
+Any user (tenant scoped). Query `?customer=` for platform admins.
+
+### `GET /api/hosts/{id}` — `PUT /api/hosts/{id}` — `PUT /api/hosts/{id}/enabled` — `DELETE /api/hosts/{id}`
+
+Same auth as monitors. PUT replaces collection flags, alert toggles, thresholds, `alert_*_after` (consecutive samples), notify channels, and interval (30–300s).
+
+### `POST /api/hosts/{id}/enroll`
+
+Admin. Invalidates unused enroll tokens and issues a new install command.
+
+### `GET /api/hosts/{id}/stats?period=24h`
+
+Chart points (`24h`, `7d`, `30d`): `cpu_percent`, `mem_percent`, `disk_percent`, `load1`.
+
+### `GET /api/hosts/install.sh?token=`
+
+Public. Serves the installer for a valid unused enroll token. Prefer downloading and inspecting the script before `sudo sh`.
+
+### `GET /api/hosts/agent/linux/{amd64|arm64}?token=`
+
+### `GET /api/hosts/agent/linux/{amd64|arm64}/sha256?token=`
+
+Public. Token-gated agent binary and SHA-256. Requires `make agents` / `make build`.
+
+### `POST /api/agent/enroll`
+
+Public. Consumes the enroll token (once). Body: `{ "token", "hostname", "os", "arch" }`. Returns `{ host_id, ingest_token, server_url, interval_seconds, sha256 }`. The ingest token is shown once.
+
+### `POST /api/agent/ingest`
+
+`Authorization: Bearer <ingest_token>`. Metrics JSON only. Response `{ "ok": true, "config": { "interval_seconds", "collect_cpu", "collect_memory", "collect_disk", "collect_load" } }`. Unknown JSON fields are ignored. The agent must not honor commands, URLs, or `server_url` from this response.
+
+Incident types: `host_offline`, `host_cpu`, `host_memory`, `host_disk`, `host_load`.
+
+---
+
 ## Auth session
 
 ### `POST /api/auth/login`
@@ -975,6 +1026,19 @@ curl -sS -X DELETE -H "Authorization: Bearer $TOKEN" \
 | GET | `/api/public/branding` | Public |
 | GET | `/api/public/status` | Public |
 | GET, POST | `/api/heartbeat/{token}` | Public |
+| GET | `/api/hosts` | Any user |
+| POST | `/api/hosts` | Admin |
+| GET | `/api/hosts/{id}` | Any user |
+| PUT | `/api/hosts/{id}` | Admin |
+| PUT | `/api/hosts/{id}/enabled` | Admin |
+| DELETE | `/api/hosts/{id}` | Admin |
+| POST | `/api/hosts/{id}/enroll` | Admin |
+| GET | `/api/hosts/{id}/stats` | Any user |
+| GET | `/api/hosts/install.sh` | Public (enroll token) |
+| GET | `/api/hosts/agent/linux/{arch}` | Public (enroll token) |
+| GET | `/api/hosts/agent/linux/{arch}/sha256` | Public (enroll token) |
+| POST | `/api/agent/enroll` | Public (enroll token) |
+| POST | `/api/agent/ingest` | Agent ingest token |
 | POST | `/api/auth/login` | Public |
 | POST | `/api/auth/logout` | Public |
 | POST | `/api/auth/mfa/verify` | Public |

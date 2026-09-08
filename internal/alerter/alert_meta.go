@@ -29,6 +29,16 @@ func (m AlertMeta) Title() string {
 		return "PERFORMANCE SLOW"
 	case "NORMAL":
 		return "BACK TO NORMAL"
+	case "HOST_OFFLINE":
+		return "HOST OFFLINE"
+	case "HOST_CPU":
+		return "HOST CPU HIGH"
+	case "HOST_MEMORY":
+		return "HOST MEMORY HIGH"
+	case "HOST_DISK":
+		return "HOST DISK HIGH"
+	case "HOST_LOAD":
+		return "HOST LOAD HIGH"
 	default:
 		return strings.ToUpper(m.Event)
 	}
@@ -36,7 +46,7 @@ func (m AlertMeta) Title() string {
 
 func (m AlertMeta) Color() string {
 	switch strings.ToUpper(strings.TrimSpace(m.Event)) {
-	case "DOWN", "SLOW":
+	case "DOWN", "SLOW", "HOST_OFFLINE", "HOST_CPU", "HOST_MEMORY", "HOST_DISK", "HOST_LOAD":
 		return "#E01E5A"
 	case "RECOVERY", "NORMAL":
 		return "#2EB67D"
@@ -55,6 +65,10 @@ func (m AlertMeta) StatusLabel() string {
 		return "SLOW"
 	case "NORMAL":
 		return "OK"
+	case "HOST_OFFLINE":
+		return "OFFLINE"
+	case "HOST_CPU", "HOST_MEMORY", "HOST_DISK", "HOST_LOAD":
+		return "HIGH"
 	default:
 		return strings.ToUpper(m.Event)
 	}

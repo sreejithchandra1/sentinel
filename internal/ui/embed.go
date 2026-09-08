@@ -31,12 +31,16 @@ func spa(fileServer http.Handler, assets fs.FS) http.Handler {
 			return
 		}
 
-		path := strings.TrimPrefix(r.URL.Path, "/")
+		path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/"), "/")
 		if path != "" && !strings.HasPrefix(path, "api/") {
 			f, err := assets.Open(path)
 			if err == nil {
 				stat, statErr := f.Stat()
 				_ = f.Close()
+				if statErr == nil && stat.IsDir() {
+					http.NotFound(w, r)
+					return
+				}
 				if statErr == nil && !stat.IsDir() {
 					fileServer.ServeHTTP(w, r)
 					return

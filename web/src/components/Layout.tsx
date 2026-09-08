@@ -66,6 +66,7 @@ type NavItem = {
 
 const allNavItems: NavItem[] = [
   { path: '/', label: 'Monitors', icon: 'monitors' },
+  { path: '/hosts', label: 'Hosts', icon: 'hosts' },
   { path: '/incidents', label: 'Incidents', icon: 'incidents' },
   { path: '/sla', label: 'SLA', icon: 'sla' },
   { path: '/performance', label: 'Performance', icon: 'performance' },
@@ -78,6 +79,7 @@ function isActivePath(pathname: string, path: string) {
   if (path === '/') {
     return pathname === '/' || (pathname.startsWith('/monitors/') && !pathname.endsWith('/new'))
   }
+  if (path === '/hosts') return pathname.startsWith('/hosts')
   if (path === '/performance') return pathname.startsWith('/performance')
   if (path === '/sla') return pathname.startsWith('/sla')
   if (path === '/incidents') return pathname.startsWith('/incidents')

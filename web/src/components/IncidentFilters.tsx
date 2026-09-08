@@ -10,6 +10,11 @@ const TYPE_OPTIONS = [
   { value: 'cert_change', label: 'Cert change' },
   { value: 'dns_change', label: 'DNS change' },
   { value: 'slow', label: 'Slow' },
+  { value: 'host_offline', label: 'Host offline' },
+  { value: 'host_cpu', label: 'Host CPU' },
+  { value: 'host_memory', label: 'Host memory' },
+  { value: 'host_disk', label: 'Host disk' },
+  { value: 'host_load', label: 'Host load' },
 ]
 
 export type IncidentFilterValues = {

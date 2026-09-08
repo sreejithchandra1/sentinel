@@ -32,7 +32,7 @@ export default function IncidentStatus({ incident }: { incident: Incident }) {
     return <span style={styles.acked}>Acknowledged</span>
   }
 
-  if (type === 'ssl_expiry' || type === 'slow') {
+  if (type === 'ssl_expiry' || type === 'slow' || (type.startsWith('host_') && type !== 'host_offline')) {
     if (type === 'ssl_expiry') {
       const days = sslExpiryDays(incident.message)
       if (days != null && days <= 7) {
@@ -55,7 +55,7 @@ export function incidentStatusLabel(incident: Incident): string {
     if (days != null && days <= 7) return 'Critical'
     return 'Warning'
   }
-  if (type === 'slow') return 'Warning'
+  if (type === 'slow' || (type.startsWith('host_') && type !== 'host_offline')) return 'Warning'
   return 'Open'
 }
 

@@ -39,12 +39,17 @@ const (
 type IncidentType string
 
 const (
-	IncidentDown       IncidentType = "down"
-	IncidentSlow       IncidentType = "slow"
-	IncidentRecovery   IncidentType = "recovery"
-	IncidentSSLExpiry  IncidentType = "ssl_expiry"
-	IncidentDNSChange  IncidentType = "dns_change"
-	IncidentCertChange IncidentType = "cert_change"
+	IncidentDown        IncidentType = "down"
+	IncidentSlow        IncidentType = "slow"
+	IncidentRecovery    IncidentType = "recovery"
+	IncidentSSLExpiry   IncidentType = "ssl_expiry"
+	IncidentDNSChange   IncidentType = "dns_change"
+	IncidentCertChange  IncidentType = "cert_change"
+	IncidentHostOffline IncidentType = "host_offline"
+	IncidentHostCPU     IncidentType = "host_cpu"
+	IncidentHostMemory  IncidentType = "host_memory"
+	IncidentHostDisk    IncidentType = "host_disk"
+	IncidentHostLoad    IncidentType = "host_load"
 )
 
 type Customer struct {
