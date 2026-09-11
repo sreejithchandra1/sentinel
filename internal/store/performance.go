@@ -2,8 +2,6 @@ package store
 
 import (
 	"database/sql"
-	"encoding/json"
-	"os"
 	"sort"
 	"time"
 
@@ -99,7 +97,6 @@ func fleetBucketDuration(since time.Time) time.Duration {
 }
 
 func (s *Store) GetMonitorStats(monitorID string, since time.Time) (*models.MonitorStats, error) {
-	t0 := time.Now()
 	rows, err := s.db.Query(`
 		SELECT checked_at, response_time_ms, status, dns_ms, tcp_ms, tls_ms, ttfb_ms
 		FROM check_results
@@ -154,22 +151,7 @@ func (s *Store) GetMonitorStats(monitorID string, since time.Time) (*models.Moni
 		stats.UptimePct = float64(upCount) / float64(total) * 100
 	}
 	stats.Performance = computePerformance(times, slowCount, total)
-	rawPoints := len(stats.Points)
 	stats.Points = downsamplePoints(stats.Points, maxChartPoints)
-	// #region agent log
-	if f, err := os.OpenFile("/Users/Sreejith/monitoring-tool/.cursor/debug-f7d7ab.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
-		_ = json.NewEncoder(f).Encode(map[string]any{
-			"sessionId": "f7d7ab", "runId": "post-fix", "hypothesisId": "E",
-			"location": "performance.go:GetMonitorStats", "message": "stats query complete",
-			"data": map[string]any{
-				"monitorID": monitorID, "pointsRaw": rawPoints, "pointsOut": len(stats.Points),
-				"ms": time.Since(t0).Milliseconds(),
-			},
-			"timestamp": time.Now().UnixMilli(),
-		})
-		_ = f.Close()
-	}
-	// #endregion
 	return stats, nil
 }
 
