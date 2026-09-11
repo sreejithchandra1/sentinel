@@ -187,7 +187,7 @@ func (s *Server) handleAgentIngest(w http.ResponseWriter, r *http.Request) {
 		jsonInternal(w, err)
 		return
 	}
-	if err := s.store.UpdateHostSnapshot(h.ID, payload.OSVersion, payload.KernelVersion, payload.RebootRequired, sample.Disks, payload.Services, payload.Security); err != nil {
+	if err := s.store.UpdateHostSnapshot(h.ID, payload.OSVersion, payload.KernelVersion, payload.RebootRequired, payload.UptimeSeconds, sample.Disks, payload.Services, payload.Security); err != nil {
 		log.Printf("agent ingest snapshot: %v", err)
 	}
 	if err := s.alerter.HandleHostIngestOnline(h, now); err != nil {

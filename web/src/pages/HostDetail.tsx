@@ -1,10 +1,11 @@
-import { FormEvent, useCallback, useRef, useState } from 'react'
+import { CSSProperties, FormEvent, ReactNode, useCallback, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
-import { api, Host, HostDisk, HostStats } from '../api'
+import { api, Host, HostDisk, HostStats, Incident } from '../api'
 import ConfirmDialog from '../components/ConfirmDialog'
+import IncidentStatus, { incidentLifecycleLabel } from '../components/IncidentStatus'
 import MetricCard from '../components/MetricCard'
 import PageHeader from '../components/PageHeader'
 import Panel from '../components/Panel'
@@ -12,8 +13,13 @@ import SegmentedTabs from '../components/SegmentedTabs'
 import StatusBadge, { isPaused } from '../components/StatusBadge'
 import { useAuth } from '../context/AuthContext'
 import { chartGridStroke, chartTick, chartTooltipLabel, chartTooltipStyle } from '../chartTheme'
-import { colors } from '../theme'
+import { colors, fonts } from '../theme'
+import { formatDuration } from '../utils/duration'
 import { useAdaptivePoll } from '../utils/poll'
+
+type Tab = 'overview' | 'performance' | 'storage' | 'security' | 'services' | 'alerts'
+type Band = 'Normal' | 'Warning' | 'Critical'
+type HealthStatus = 'HEALTHY' | 'WARNING' | 'CRITICAL' | 'OFFLINE' | 'PAUSED' | 'WAITING'
 
 function samplesFromMinutes(minutes: number, interval: number): number {
   const sec = Math.max(60, Math.round(minutes * 60))
@@ -24,7 +30,7 @@ function minutesFromSamples(after: number, interval: number): number {
   return Math.max(1, Math.round((after || 1) * Math.max(interval, 30) / 60))
 }
 
-function fmt(n?: number, digits = 1): string {
+function fmt(n?: number | null, digits = 1): string {
   if (n == null || Number.isNaN(n)) return '—'
   return n.toFixed(digits)
 }
@@ -55,6 +61,71 @@ function usageColor(pct: number, warning = 80, critical = 90): string {
   return colors.green
 }
 
+function metricBand(value: number | null | undefined, warning: number, critical: number): Band {
+  if (value == null || Number.isNaN(value)) return 'Normal'
+  if (value >= critical) return 'Critical'
+  if (value >= warning) return 'Warning'
+  return 'Normal'
+}
+
+function bandAccent(b: Band): 'green' | 'yellow' | 'red' {
+  if (b === 'Critical') return 'red'
+  if (b === 'Warning') return 'yellow'
+  return 'green'
+}
+
+function serviceOk(active?: string): boolean {
+  return active === 'active' || active === 'activating'
+}
+
+function hostHealth(host: Host, latest: HostStats['points'][number] | undefined, ncpu: number): { score: number; status: HealthStatus } {
+  if (host.enabled === false) return { score: 100, status: 'PAUSED' }
+  if (host.status === 'pending') return { score: 0, status: 'WAITING' }
+
+  const loadPct = latest?.load1 != null ? (latest.load1 / Math.max(ncpu || 1, 1)) * 100 : null
+  const loadCrit = host.alert_load_threshold > 0 && ncpu ? (host.alert_load_threshold / ncpu) * 100 : 90
+  const gauges: Band[] = [
+    metricBand(latest?.cpu_percent, host.alert_cpu_warning || 80, host.alert_cpu_threshold || 90),
+    metricBand(latest?.mem_percent, host.alert_memory_warning || 80, host.alert_memory_threshold || 90),
+    metricBand(latest?.swap_percent, host.alert_swap_warning || 80, host.alert_swap_threshold || 90),
+    metricBand(latest?.disk_percent, host.alert_disk_warning || 80, host.alert_disk_threshold || 90),
+    metricBand(loadPct, host.alert_load_warning || 80, loadCrit),
+    metricBand(latest?.iowait_percent, host.alert_iowait_warning || 80, host.alert_iowait_threshold || 90),
+  ]
+
+  let score = 100
+  let status: HealthStatus = 'HEALTHY'
+  const raise = (next: HealthStatus) => {
+    if (next === 'CRITICAL' || (next === 'WARNING' && status === 'HEALTHY')) status = next
+  }
+  for (const b of gauges) {
+    if (b === 'Critical') { score -= 18; raise('CRITICAL') }
+    else if (b === 'Warning') { score -= 8; raise('WARNING') }
+  }
+  const failed = (host.services || []).filter(name => {
+    const st = (host.service_status || []).find(s => s.name === name)
+    return !serviceOk(st?.active)
+  }).length
+  if (failed) { score -= Math.min(36, failed * 12); raise('CRITICAL') }
+  if (host.reboot_required) { score -= 6; raise('WARNING') }
+  const sec = host.security
+  const authTotal = (sec?.ssh_failed_5m || 0) + (sec?.sudo_failed_5m || 0) + (sec?.auth_failed_5m || 0)
+  if ((sec?.root_logins_5m || 0) > 0) { score -= 16; raise('CRITICAL') }
+  if (authTotal >= (host.alert_auth_threshold || 50)) { score -= 20; raise('CRITICAL') }
+  else if ((sec?.ssh_failed_5m || 0) >= 10) { score -= 6; raise('WARNING') }
+  if (host.status === 'offline') {
+    score = Math.min(score, 25)
+    status = 'OFFLINE'
+  }
+  return { score: Math.max(0, Math.min(100, Math.round(score))), status }
+}
+
+function healthColor(status: HealthStatus): string {
+  if (status === 'HEALTHY') return colors.green
+  if (status === 'WARNING' || status === 'WAITING' || status === 'PAUSED') return colors.yellow
+  return colors.red
+}
+
 type ChartPoint = {
   time: string
   cpu: number | null
@@ -72,6 +143,8 @@ export default function HostDetail() {
   const navigate = useNavigate()
   const [host, setHost] = useState<Host | null>(null)
   const [stats, setStats] = useState<HostStats | null>(null)
+  const [incidents, setIncidents] = useState<Incident[]>([])
+  const [tab, setTab] = useState<Tab>('overview')
   const [period, setPeriod] = useState('24h')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -85,17 +158,19 @@ export default function HostDetail() {
 
   const load = useCallback(async () => {
     if (!id) return null
-    const [h, s] = await Promise.all([api.getHost(id), api.hostStats(id, period)])
+    const [h, s, inc] = await Promise.all([
+      api.getHost(id),
+      api.hostStats(id, period),
+      api.incidents({ monitorId: id, limit: 50, offset: 0 }).catch(() => ({ items: [] as Incident[] })),
+    ])
     setHost(h)
     setStats(s)
+    setIncidents(inc.items || [])
     if (servicesHostId.current !== h.id) {
       servicesHostId.current = h.id
       setServicesText((h.services || []).join('\n'))
     }
-    return {
-      ...h,
-      last_checked_at: h.last_seen_at,
-    }
+    return { ...h, last_checked_at: h.last_seen_at }
   }, [id, period])
 
   useAdaptivePoll(id, load, [period])
@@ -158,6 +233,8 @@ export default function HostDetail() {
 
   const latest = stats?.points?.[stats.points.length - 1]
   const ncpu = host.num_cpu || latest?.num_cpu || 0
+  const loadPct = latest?.load1 != null ? (latest.load1 / Math.max(ncpu || 1, 1)) * 100 : null
+  const loadCrit = host.alert_load_threshold > 0 && ncpu ? (host.alert_load_threshold / ncpu) * 100 : 90
   const chartData: ChartPoint[] = (stats?.points || []).map(p => {
     const cores = p.num_cpu || ncpu || 1
     return {
@@ -172,15 +249,19 @@ export default function HostDetail() {
     }
   })
   const disks: HostDisk[] = (host.disks && host.disks.length > 0) ? host.disks : (latest?.disks || [])
-  const anyChart = host.collect_cpu || host.collect_memory || host.collect_disk || host.collect_load || host.collect_swap || host.collect_iowait
+  const health = hostHealth(host, latest, ncpu)
+  const kpis: { label: string; value: string; band: Band }[] = [
+    { label: 'CPU', value: `${fmt(latest?.cpu_percent)}%`, band: metricBand(latest?.cpu_percent, host.alert_cpu_warning || 80, host.alert_cpu_threshold || 90) },
+    { label: 'Memory', value: `${fmt(latest?.mem_percent)}%`, band: metricBand(latest?.mem_percent, host.alert_memory_warning || 80, host.alert_memory_threshold || 90) },
+    { label: 'Swap', value: `${fmt(latest?.swap_percent)}%`, band: metricBand(latest?.swap_percent, host.alert_swap_warning || 80, host.alert_swap_threshold || 90) },
+    { label: 'Disk', value: `${fmt(latest?.disk_percent)}%`, band: metricBand(latest?.disk_percent, host.alert_disk_warning || 80, host.alert_disk_threshold || 90) },
+    { label: 'Load', value: `${fmt(loadPct)}%`, band: metricBand(loadPct, host.alert_load_warning || 80, loadCrit) },
+    { label: 'I/O Wait', value: `${fmt(latest?.iowait_percent)}%`, band: metricBand(latest?.iowait_percent, host.alert_iowait_warning || 80, host.alert_iowait_threshold || 90) },
+  ]
 
   function setHostField<K extends keyof Host>(key: K, value: Host[K]) {
     setHost(h => h ? { ...h, [key]: value } : h)
   }
-
-  const loadLabel = latest?.load1 != null && ncpu
-    ? `${fmt(latest.load1, 2)} / ${ncpu} cores (${fmt((latest.load1 / ncpu) * 100)}%)`
-    : fmt(latest?.load1, 2)
 
   return (
     <div className="page">
@@ -197,35 +278,17 @@ export default function HostDetail() {
       <PageHeader
         title={host.name || 'New host'}
         badges={<StatusBadge status={hostBadge(host)} />}
-        subtitle={
-          <>
-            <Link to="/hosts" style={styles.back}>← Hosts</Link>
-            <span style={{ marginLeft: 10 }}>{host.hostname || 'Waiting for agent'}</span>
-            {host.os && <span style={{ marginLeft: 10, color: colors.textMuted }}>{host.os_version || host.os}{host.arch ? ` / ${host.arch}` : ''}</span>}
-          </>
-        }
+        subtitle={<Link to="/hosts" style={styles.back}>← Hosts</Link>}
         actions={
-          <>
-            <SegmentedTabs
-              label="Chart period"
-              value={period}
-              onChange={setPeriod}
-              tabs={[
-                { id: '24h', label: '24h' },
-                { id: '7d', label: '7d' },
-                { id: '30d', label: '30d' },
-              ]}
-            />
-            {isAdmin && (
-              <>
-                <button type="button" className="btn" disabled={toggling} onClick={togglePause}>
-                  {isPaused(host) ? 'Resume' : 'Pause'}
-                </button>
-                <button type="button" className="btn" onClick={regenerate}>Install command</button>
-                <button type="button" className="btn" onClick={() => setDeleteOpen(true)}>Delete</button>
-              </>
-            )}
-          </>
+          isAdmin ? (
+            <>
+              <button type="button" className="btn" disabled={toggling} onClick={togglePause}>
+                {isPaused(host) ? 'Resume' : 'Pause'}
+              </button>
+              <button type="button" className="btn" onClick={regenerate}>Install command</button>
+              <button type="button" className="btn" onClick={() => setDeleteOpen(true)}>Delete</button>
+            </>
+          ) : undefined
         }
       />
 
@@ -261,357 +324,311 @@ export default function HostDetail() {
         </Panel>
       )}
 
-      <div className="grid-4" style={{ marginBottom: 24 }}>
-        <MetricCard label="CPU" value={`${fmt(latest?.cpu_percent)}%`} />
-        <MetricCard label="Memory" value={`${fmt(latest?.mem_percent)}%`} />
-        <MetricCard label="Swap" value={`${fmt(latest?.swap_percent)}%`} />
-        <MetricCard label="Disk (worst)" value={`${fmt(latest?.disk_percent)}%`} />
-        <MetricCard label="Load" value={loadLabel} />
-        <MetricCard label="I/O wait" value={`${fmt(latest?.iowait_percent)}%`} />
+      <Panel style={{ marginBottom: 16 }}>
+        <div className="host-health">
+          <HealthStat label="Host" value={host.name || host.hostname || '—'} />
+          <HealthStat label="Status" value={health.status} color={healthColor(health.status)} />
+          <HealthStat label="Health Score" value={`${health.score}/100`} color={healthColor(health.status)} />
+          <HealthStat label="Last Check-in" value={timeAgo(host.last_seen_at)} />
+        </div>
+      </Panel>
+
+      <div className="grid-6" style={{ marginBottom: 16 }}>
+        {kpis.map(k => (
+          <MetricCard key={k.label} label={k.label} value={k.value} sub={k.band} accent={bandAccent(k.band)} />
+        ))}
       </div>
 
-      {host.collect_disk && (
-        <Panel style={{ marginBottom: 20 }}>
-          <h3 className="panel-title">Disk usage per mount</h3>
-          {disks.length === 0 ? (
-            <div style={styles.empty}>Waiting for samples…</div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {disks.slice().sort((a, b) => b.percent - a.percent).map(d => (
-                <div key={d.mount}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 6 }}>
-                    <code style={{ color: colors.text }}>{d.mount}</code>
-                    <span style={{ color: usageColor(d.percent, host.alert_disk_warning, host.alert_disk_threshold), fontWeight: 600 }}>
-                      {fmt(d.percent)}%
-                    </span>
-                  </div>
-                  <div style={styles.barTrack}>
-                    <div style={{
-                      ...styles.barFill,
-                      width: `${Math.min(100, d.percent)}%`,
-                      background: usageColor(d.percent, host.alert_disk_warning, host.alert_disk_threshold),
-                    }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Panel>
-      )}
+      <div className="detail-grid">
+        <div>
+          <div style={{ marginBottom: 16 }}>
+            <SegmentedTabs
+              label="Host sections"
+              value={tab}
+              onChange={id => setTab(id as Tab)}
+              tabs={[
+                { id: 'overview', label: 'Overview' },
+                { id: 'performance', label: 'Performance' },
+                { id: 'storage', label: 'Storage' },
+                { id: 'security', label: 'Security' },
+                { id: 'services', label: 'Services' },
+                { id: 'alerts', label: 'Alert Rules' },
+              ]}
+            />
+          </div>
 
-      {!anyChart ? (
-        <Panel style={{ marginBottom: 20 }}>
-          <div style={styles.empty}>Turn on collection below to see metric graphs.</div>
-        </Panel>
-      ) : (
-        <div className="grid-2" style={{ marginBottom: 20, alignItems: 'stretch' }}>
-          {host.collect_cpu && (
-            <MetricChart
-              title="CPU"
-              data={chartData}
-              dataKey="cpu"
-              color={colors.brand}
-              unit="%"
-              domain={[0, 100]}
-              warning={host.alert_cpu_enabled ? host.alert_cpu_warning : undefined}
-              critical={host.alert_cpu_enabled ? host.alert_cpu_threshold : undefined}
+          {tab === 'overview' && (
+            <OverviewTab host={host} incidents={incidents} />
+          )}
+          {tab === 'performance' && (
+            <PerformanceTab
+              host={host}
+              chartData={chartData}
+              period={period}
+              onPeriod={setPeriod}
+              ncpu={ncpu}
+              loadCrit={loadCrit}
             />
           )}
-          {host.collect_memory && (
-            <MetricChart
-              title="Memory"
-              data={chartData}
-              dataKey="mem"
-              color={colors.blue}
-              unit="%"
-              domain={[0, 100]}
-              warning={host.alert_memory_enabled ? host.alert_memory_warning : undefined}
-              critical={host.alert_memory_enabled ? host.alert_memory_threshold : undefined}
-            />
+          {tab === 'storage' && (
+            <StorageTab host={host} disks={disks} chartData={chartData} />
           )}
-          {host.collect_swap && (
-            <MetricChart
-              title="Swap"
-              data={chartData}
-              dataKey="swap"
-              color="#bc8cff"
-              unit="%"
-              domain={[0, 100]}
-              warning={host.alert_swap_enabled ? host.alert_swap_warning : undefined}
-              critical={host.alert_swap_enabled ? host.alert_swap_threshold : undefined}
-            />
-          )}
-          {host.collect_load && (
-            <MetricChart
-              title={ncpu ? `Load (% of ${ncpu} cores)` : 'Load'}
-              data={chartData}
-              dataKey="loadPct"
-              color={colors.green}
-              unit="%"
-              warning={host.alert_load_enabled ? host.alert_load_warning : undefined}
-              critical={host.alert_load_enabled
-                ? (host.alert_load_threshold > 0 && ncpu
-                  ? (host.alert_load_threshold / ncpu) * 100
-                  : 90)
-                : undefined}
-            />
-          )}
-          {host.collect_iowait && (
-            <MetricChart
-              title="Disk I/O wait"
-              data={chartData}
-              dataKey="iowait"
-              color={colors.yellow}
-              unit="%"
-              domain={[0, 100]}
-              warning={host.alert_iowait_enabled ? host.alert_iowait_warning : undefined}
-              critical={host.alert_iowait_enabled ? host.alert_iowait_threshold : undefined}
-            />
+          {tab === 'security' && <SecurityTab host={host} />}
+          {tab === 'services' && <ServicesTab host={host} />}
+          {tab === 'alerts' && (
+            isAdmin ? (
+              <AlertRulesTab
+                host={host}
+                setHostField={setHostField}
+                servicesText={servicesText}
+                setServicesText={setServicesText}
+                saving={saving}
+                onSubmit={saveMonitoring}
+              />
+            ) : (
+              <Panel><div style={styles.empty}>Only admins can edit alert rules.</div></Panel>
+            )
           )}
         </div>
-      )}
 
-      <div className="grid-2" style={{ marginBottom: 20, alignItems: 'stretch' }}>
-        <SecurityPanel host={host} />
-        <ServicesPanel host={host} />
+        <aside className="host-side" aria-label="Host information">
+          <Panel style={{ marginBottom: 0 }}>
+            <h3 className="panel-title">Host Information</h3>
+            <InfoRow label="Hostname" value={host.hostname || '—'} />
+            <InfoRow label="OS" value={host.os_version || host.os || '—'} />
+            <InfoRow label="Kernel" value={host.kernel_version || '—'} />
+            <InfoRow label="Agent" value={host.agent_version || '—'} />
+            <InfoRow label="CPUs" value={ncpu ? String(ncpu) : '—'} />
+            <InfoRow label="Arch" value={host.arch || '—'} />
+            <InfoRow label="Uptime" value={host.uptime_seconds ? formatDuration(host.uptime_seconds) : '—'} />
+            <InfoRow label="Last check-in" value={timeAgo(host.last_seen_at)} />
+            <InfoRow label="Health" value={`${health.score}/100`} color={healthColor(health.status)} />
+            <InfoRow label="Status" value={health.status} color={healthColor(health.status)} />
+          </Panel>
+        </aside>
       </div>
-
-      {isAdmin && (
-        <Panel>
-          <h3 className="panel-title">Monitoring</h3>
-          <p style={{ color: colors.textMuted, fontSize: 14, marginTop: 0 }}>
-            Warning defaults to 80, critical to 90. Load is compared to CPU cores (load 4 on 4 cores = 100%). Alerts fire only after the value stays high for the duration.
-          </p>
-          <form onSubmit={saveMonitoring}>
-            <MetricToggle
-              label="CPU"
-              collect={host.collect_cpu}
-              onCollect={v => setHostField('collect_cpu', v)}
-              alert={host.alert_cpu_enabled}
-              onAlert={v => setHostField('alert_cpu_enabled', v)}
-              warning={host.alert_cpu_warning}
-              onWarning={v => setHostField('alert_cpu_warning', v)}
-              threshold={host.alert_cpu_threshold}
-              onThreshold={v => setHostField('alert_cpu_threshold', v)}
-              minutes={minutesFromSamples(host.alert_cpu_after, host.interval_seconds)}
-              onMinutes={m => setHostField('alert_cpu_after', samplesFromMinutes(m, host.interval_seconds))}
-            />
-            <MetricToggle
-              label="Memory"
-              collect={host.collect_memory}
-              onCollect={v => setHostField('collect_memory', v)}
-              alert={host.alert_memory_enabled}
-              onAlert={v => setHostField('alert_memory_enabled', v)}
-              warning={host.alert_memory_warning}
-              onWarning={v => setHostField('alert_memory_warning', v)}
-              threshold={host.alert_memory_threshold}
-              onThreshold={v => setHostField('alert_memory_threshold', v)}
-              minutes={minutesFromSamples(host.alert_memory_after, host.interval_seconds)}
-              onMinutes={m => setHostField('alert_memory_after', samplesFromMinutes(m, host.interval_seconds))}
-            />
-            <MetricToggle
-              label="Swap"
-              collect={host.collect_swap}
-              onCollect={v => setHostField('collect_swap', v)}
-              alert={host.alert_swap_enabled}
-              onAlert={v => setHostField('alert_swap_enabled', v)}
-              warning={host.alert_swap_warning}
-              onWarning={v => setHostField('alert_swap_warning', v)}
-              threshold={host.alert_swap_threshold}
-              onThreshold={v => setHostField('alert_swap_threshold', v)}
-              minutes={minutesFromSamples(host.alert_swap_after, host.interval_seconds)}
-              onMinutes={m => setHostField('alert_swap_after', samplesFromMinutes(m, host.interval_seconds))}
-            />
-            <MetricToggle
-              label="Disk"
-              collect={host.collect_disk}
-              onCollect={v => setHostField('collect_disk', v)}
-              alert={host.alert_disk_enabled}
-              onAlert={v => setHostField('alert_disk_enabled', v)}
-              warning={host.alert_disk_warning}
-              onWarning={v => setHostField('alert_disk_warning', v)}
-              threshold={host.alert_disk_threshold}
-              onThreshold={v => setHostField('alert_disk_threshold', v)}
-              minutes={minutesFromSamples(host.alert_disk_after, host.interval_seconds)}
-              onMinutes={m => setHostField('alert_disk_after', samplesFromMinutes(m, host.interval_seconds))}
-            />
-            <MetricToggle
-              label="Load"
-              collect={host.collect_load}
-              onCollect={v => setHostField('collect_load', v)}
-              alert={host.alert_load_enabled}
-              onAlert={v => setHostField('alert_load_enabled', v)}
-              warning={host.alert_load_warning}
-              onWarning={v => setHostField('alert_load_warning', v)}
-              threshold={host.alert_load_threshold}
-              onThreshold={v => setHostField('alert_load_threshold', v)}
-              minutes={minutesFromSamples(host.alert_load_after, host.interval_seconds)}
-              onMinutes={m => setHostField('alert_load_after', samplesFromMinutes(m, host.interval_seconds))}
-              thresholdHint="0 = 90% of CPU cores"
-            />
-            <MetricToggle
-              label="I/O wait"
-              collect={host.collect_iowait}
-              onCollect={v => setHostField('collect_iowait', v)}
-              alert={host.alert_iowait_enabled}
-              onAlert={v => setHostField('alert_iowait_enabled', v)}
-              warning={host.alert_iowait_warning}
-              onWarning={v => setHostField('alert_iowait_warning', v)}
-              threshold={host.alert_iowait_threshold}
-              onThreshold={v => setHostField('alert_iowait_threshold', v)}
-              minutes={minutesFromSamples(host.alert_iowait_after, host.interval_seconds)}
-              onMinutes={m => setHostField('alert_iowait_after', samplesFromMinutes(m, host.interval_seconds))}
-            />
-
-            <h3 className="panel-title" style={{ marginTop: 24 }}>Security alerts</h3>
-            <label style={styles.check}>
-              <input type="checkbox" checked={host.collect_security} onChange={e => setHostField('collect_security', e.target.checked)} />
-              Collect auth logs (read-only; agent is in the adm/systemd-journal groups)
-            </label>
-            <div style={styles.metricRow}>
-              <label style={styles.check}>
-                <input type="checkbox" checked={host.alert_auth_enabled} disabled={!host.collect_security} onChange={e => setHostField('alert_auth_enabled', e.target.checked)} />
-                Auth burst
-              </label>
-              <label className="field" style={{ margin: 0, width: 180 }}>
-                <span className="field-label">Failures / 5 min</span>
-                <input type="number" min={1} className="input" disabled={!host.alert_auth_enabled} value={host.alert_auth_threshold} onChange={e => setHostField('alert_auth_threshold', Number(e.target.value) || 50)} />
-              </label>
-              <label style={styles.check}>
-                <input type="checkbox" checked={host.alert_root_login_enabled} disabled={!host.collect_security} onChange={e => setHostField('alert_root_login_enabled', e.target.checked)} />
-                Root login
-              </label>
-              <label style={styles.check}>
-                <input type="checkbox" checked={host.alert_reboot_enabled} onChange={e => setHostField('alert_reboot_enabled', e.target.checked)} />
-                Reboot required
-              </label>
-            </div>
-
-            <h3 className="panel-title" style={{ marginTop: 24 }}>Services</h3>
-            <p style={{ color: colors.textMuted, fontSize: 13, marginTop: 0 }}>One systemd unit per line (e.g. nginx, sshd, postgresql).</p>
-            <label style={styles.check}>
-              <input type="checkbox" checked={host.collect_services} onChange={e => setHostField('collect_services', e.target.checked)} />
-              Collect service status
-            </label>
-            <label style={{ ...styles.check, marginLeft: 16 }}>
-              <input type="checkbox" checked={host.alert_service_enabled} disabled={!host.collect_services} onChange={e => setHostField('alert_service_enabled', e.target.checked)} />
-              Alert if a watched service is not active
-            </label>
-            <textarea
-              className="input"
-              rows={4}
-              disabled={!host.collect_services}
-              value={servicesText}
-              onChange={e => setServicesText(e.target.value)}
-              placeholder="nginx&#10;sshd"
-              style={{ marginTop: 12, fontFamily: 'ui-monospace, monospace', fontSize: 13 }}
-            />
-
-            <div className="grid-2" style={{ marginTop: 16 }}>
-              <label className="field">
-                <span className="field-label">Report interval (seconds)</span>
-                <input
-                  type="number"
-                  min={30}
-                  max={300}
-                  className="input"
-                  value={host.interval_seconds}
-                  onChange={e => setHostField('interval_seconds', Number(e.target.value) || 30)}
-                />
-              </label>
-              <label className="field">
-                <span className="field-label">Offline after missed reports</span>
-                <input
-                  type="number"
-                  min={1}
-                  className="input"
-                  value={host.alert_after_failures}
-                  onChange={e => setHostField('alert_after_failures', Number(e.target.value) || 2)}
-                />
-              </label>
-            </div>
-            <div style={{ display: 'flex', gap: 16, marginTop: 16, flexWrap: 'wrap' }}>
-              <label style={styles.check}>
-                <input type="checkbox" checked={host.notify_email} onChange={e => setHostField('notify_email', e.target.checked)} />
-                Email
-              </label>
-              <label style={styles.check}>
-                <input type="checkbox" checked={host.notify_slack} onChange={e => setHostField('notify_slack', e.target.checked)} />
-                Slack
-              </label>
-              <label style={styles.check}>
-                <input type="checkbox" checked={host.notify_webhooks} onChange={e => setHostField('notify_webhooks', e.target.checked)} />
-                Webhooks
-              </label>
-            </div>
-            <div style={{ marginTop: 20 }}>
-              <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save monitoring'}</button>
-            </div>
-          </form>
-        </Panel>
-      )}
     </div>
   )
 }
 
-function SecurityPanel({ host }: { host: Host }) {
-  const sec = host.security
-  const rows: [string, string][] = [
-    ['Last check-in', timeAgo(host.last_seen_at)],
-    ['Agent version', host.agent_version || '—'],
-    ['OS version', host.os_version || host.os || '—'],
-    ['Kernel', host.kernel_version || '—'],
-    ['Reboot required', host.reboot_required ? 'Yes' : 'No'],
-    ['SSH failed (5m)', sec ? String(sec.ssh_failed_5m) : '—'],
-    ['sudo failures (5m)', sec ? String(sec.sudo_failed_5m) : '—'],
-    ['Auth failures (5m)', sec ? String(sec.auth_failed_5m) : '—'],
-    ['Root logins (5m)', sec ? String(sec.root_logins_5m) : '—'],
-  ]
-  if (sec?.last_root_login) rows.push(['Last root login', new Date(sec.last_root_login).toLocaleString()])
+function OverviewTab({
+  host, incidents,
+}: {
+  host: Host
+  incidents: Incident[]
+}) {
   return (
-    <Panel style={{ marginBottom: 0 }}>
-      <h3 className="panel-title">Host security</h3>
-      {sec && !sec.logs_readable && (
-        <p style={{ color: colors.yellow, fontSize: 13, marginTop: 0 }}>Auth logs are not readable on this host yet. Re-run the installer so sentinel-agent is in the adm group.</p>
-      )}
-      <dl style={styles.dl}>
-        {rows.map(([k, v]) => (
-          <div key={k} style={styles.dlRow}>
-            <dt style={styles.dt}>{k}</dt>
-            <dd style={{
-              ...styles.dd,
-              color: (k === 'Reboot required' && host.reboot_required) || (k.startsWith('Root') && sec && sec.root_logins_5m > 0)
-                ? colors.red
-                : colors.text,
-            }}>{v}</dd>
+    <>
+      <SecurityEventCards host={host} />
+      <IncidentTimeline incidents={incidents} />
+    </>
+  )
+}
+
+function PerformanceTab({
+  host, chartData, period, onPeriod, ncpu, loadCrit,
+}: {
+  host: Host
+  chartData: ChartPoint[]
+  period: string
+  onPeriod: (id: string) => void
+  ncpu: number
+  loadCrit: number
+}) {
+  return (
+    <>
+      <div style={{ marginBottom: 16 }}>
+        <SegmentedTabs
+          label="Chart period"
+          value={period}
+          onChange={onPeriod}
+          tabs={[{ id: '24h', label: '24h' }, { id: '7d', label: '7d' }, { id: '30d', label: '30d' }]}
+        />
+      </div>
+      <div className="grid-2" style={{ marginBottom: 16, alignItems: 'stretch' }}>
+        {host.collect_cpu && (
+          <MetricChart title="CPU" data={chartData} dataKey="cpu" color={colors.brand} unit="%" domain={[0, 100]}
+            warning={host.alert_cpu_enabled ? host.alert_cpu_warning : undefined}
+            critical={host.alert_cpu_enabled ? host.alert_cpu_threshold : undefined} />
+        )}
+        {host.collect_memory && (
+          <MetricChart title="Memory" data={chartData} dataKey="mem" color={colors.blue} unit="%" domain={[0, 100]}
+            warning={host.alert_memory_enabled ? host.alert_memory_warning : undefined}
+            critical={host.alert_memory_enabled ? host.alert_memory_threshold : undefined} />
+        )}
+        {host.collect_load && (
+          <MetricChart title={ncpu ? `Load (% of ${ncpu} cores)` : 'Load'} data={chartData} dataKey="loadPct" color={colors.green} unit="%"
+            warning={host.alert_load_enabled ? host.alert_load_warning : undefined}
+            critical={host.alert_load_enabled ? loadCrit : undefined} />
+        )}
+        {host.collect_disk && (
+          <MetricChart title="Disk" data={chartData} dataKey="disk" color={colors.yellow} unit="%" domain={[0, 100]}
+            warning={host.alert_disk_enabled ? host.alert_disk_warning : undefined}
+            critical={host.alert_disk_enabled ? host.alert_disk_threshold : undefined} />
+        )}
+        {host.collect_swap && (
+          <MetricChart title="Swap" data={chartData} dataKey="swap" color="#bc8cff" unit="%" domain={[0, 100]}
+            warning={host.alert_swap_enabled ? host.alert_swap_warning : undefined}
+            critical={host.alert_swap_enabled ? host.alert_swap_threshold : undefined} />
+        )}
+        {host.collect_iowait && (
+          <MetricChart title="I/O wait" data={chartData} dataKey="iowait" color={colors.yellow} unit="%" domain={[0, 100]}
+            warning={host.alert_iowait_enabled ? host.alert_iowait_warning : undefined}
+            critical={host.alert_iowait_enabled ? host.alert_iowait_threshold : undefined} />
+        )}
+      </div>
+    </>
+  )
+}
+
+function StorageTab({ host, disks, chartData }: { host: Host; disks: HostDisk[]; chartData: ChartPoint[] }) {
+  return (
+    <>
+      <Panel style={{ marginBottom: 16 }}>
+        <h3 className="panel-title">Disk Usage</h3>
+        {disks.length === 0 ? (
+          <div style={styles.empty}>Waiting for samples…</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {disks.slice().sort((a, b) => b.percent - a.percent).map(d => (
+              <div key={d.mount} style={{ display: 'grid', gridTemplateColumns: 'minmax(72px, 120px) 1fr auto', gap: 12, alignItems: 'center' }}>
+                <code style={{ fontSize: 13, color: colors.text }}>{d.mount}</code>
+                <div style={styles.barTrack}>
+                  <div style={{
+                    ...styles.barFill,
+                    width: `${Math.min(100, d.percent)}%`,
+                    background: usageColor(d.percent, host.alert_disk_warning, host.alert_disk_threshold),
+                  }} />
+                </div>
+                <span style={{
+                  fontWeight: 600,
+                  fontVariantNumeric: 'tabular-nums',
+                  fontFamily: fonts.mono,
+                  color: usageColor(d.percent, host.alert_disk_warning, host.alert_disk_threshold),
+                }}>{fmt(d.percent)}%</span>
+              </div>
+            ))}
           </div>
+        )}
+      </Panel>
+      {host.collect_disk && (
+        <MetricChart title="Worst disk" data={chartData} dataKey="disk" color={colors.yellow} unit="%" domain={[0, 100]}
+          warning={host.alert_disk_enabled ? host.alert_disk_warning : undefined}
+          critical={host.alert_disk_enabled ? host.alert_disk_threshold : undefined} />
+      )}
+    </>
+  )
+}
+
+function SecurityTab({ host }: { host: Host }) {
+  const sec = host.security
+  return (
+    <>
+      <SecurityEventCards host={host} />
+      <Panel>
+        <h3 className="panel-title">Security details</h3>
+        {sec && !sec.logs_readable && (
+          <p style={{ color: colors.yellow, fontSize: 13, marginTop: 0 }}>
+            Auth logs are not readable on this host yet. Re-run the installer so sentinel-agent is in the adm group.
+          </p>
+        )}
+        <InfoRow label="Reboot required" value={host.reboot_required ? 'Yes' : 'No'} color={host.reboot_required ? colors.red : undefined} />
+        <InfoRow label="sudo failures (5m)" value={sec ? String(sec.sudo_failed_5m) : '—'} />
+        <InfoRow label="Last root login" value={sec?.last_root_login ? new Date(sec.last_root_login).toLocaleString() : '—'} />
+        <InfoRow label="Kernel" value={host.kernel_version || '—'} />
+        <InfoRow label="OS" value={host.os_version || host.os || '—'} />
+      </Panel>
+    </>
+  )
+}
+
+function SecurityEventCards({ host }: { host: Host }) {
+  const sec = host.security
+  const cards = [
+    { label: 'SSH Failures', value: sec ? String(sec.ssh_failed_5m) : '—', hot: (sec?.ssh_failed_5m || 0) > 0 },
+    { label: 'Auth Failed', value: sec ? String(sec.auth_failed_5m) : '—', hot: (sec?.auth_failed_5m || 0) > 0 },
+    { label: 'Root Logins', value: sec ? String(sec.root_logins_5m) : '—', hot: (sec?.root_logins_5m || 0) > 0 },
+  ]
+  return (
+    <Panel style={{ marginBottom: 16 }}>
+      <h3 className="panel-title">Security Events (Last 5 Minutes)</h3>
+      <div className="grid-3">
+        {cards.map(c => (
+          <MetricCard key={c.label} label={c.label} value={c.value} accent={c.hot ? 'red' : 'green'} />
         ))}
-      </dl>
+      </div>
+      <div style={{ marginTop: 14, color: colors.textMuted, fontSize: 14 }}>
+        Last root login:{' '}
+        <span style={{ color: colors.text, fontWeight: 600 }}>
+          {sec?.last_root_login ? new Date(sec.last_root_login).toLocaleString() : '—'}
+        </span>
+      </div>
     </Panel>
   )
 }
 
-function ServicesPanel({ host }: { host: Host }) {
+function ServicesTab({ host }: { host: Host }) {
   const watched = host.services || []
-  const status = host.service_status || []
-  const byName = Object.fromEntries(status.map(s => [s.name, s]))
+  const byName = Object.fromEntries((host.service_status || []).map(s => [s.name, s]))
+  const healthy = watched.filter(name => serviceOk(byName[name]?.active)).length
+  const failed = watched.length - healthy
   return (
-    <Panel style={{ marginBottom: 0 }}>
-      <h3 className="panel-title">Services</h3>
+    <>
+      <div className="grid-3" style={{ marginBottom: 16 }}>
+        <MetricCard label="Watched" value={String(watched.length)} />
+        <MetricCard label="Healthy" value={String(healthy)} accent="green" />
+        <MetricCard label="Failed" value={String(failed)} accent={failed ? 'red' : 'green'} />
+      </div>
       {watched.length === 0 ? (
-        <div style={styles.empty}>Add systemd units under Monitoring to watch them.</div>
+        <Panel><div style={styles.empty}>Add systemd units under Alert Rules to watch them.</div></Panel>
       ) : (
-        <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+        <div className="grid-2">
           {watched.map(name => {
             const st = byName[name]
-            const active = st?.active || 'unknown'
-            const ok = active === 'active' || active === 'activating'
+            const ok = serviceOk(st?.active)
             return (
-              <li key={name} style={styles.svcRow}>
-                <code>{name}</code>
-                <span style={{ color: ok ? colors.green : colors.red, fontWeight: 600 }}>
-                  {active}{st?.sub ? ` (${st.sub})` : ''}
-                </span>
+              <div key={name} className="svc-card">
+                <div>
+                  <div style={{ fontWeight: 600 }}>{ok ? '✓' : '✕'} {name}</div>
+                  <div style={{ color: colors.textMuted, fontSize: 13, marginTop: 4 }}>
+                    {st?.active || 'unknown'}{st?.sub ? ` (${st.sub})` : ''}
+                  </div>
+                </div>
+                <span style={{ color: ok ? colors.green : colors.red, fontWeight: 600 }}>{ok ? 'Healthy' : 'Failed'}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </>
+  )
+}
+
+function IncidentTimeline({ incidents }: { incidents: Incident[] }) {
+  return (
+    <Panel>
+      <h3 className="panel-title">Incident timeline</h3>
+      {incidents.length === 0 ? (
+        <div style={styles.empty}>No incidents for this host.</div>
+      ) : (
+        <ul className="host-timeline">
+          {incidents.map(inc => {
+            const open = !inc.resolved_at
+            return (
+              <li key={inc.id}>
+                <span className="host-timeline-dot" style={{ background: open ? colors.red : colors.green }} />
+                <div>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <Link to={`/incidents/${inc.id}`} style={{ color: colors.text, fontWeight: 600, textDecoration: 'none' }}>
+                      {inc.type.replace('host_', '').replace(/_/g, ' ')}
+                    </Link>
+                    <IncidentStatus incident={inc} />
+                    <span style={{ color: colors.textMuted, fontSize: 13 }}>{timeAgo(inc.started_at)}</span>
+                  </div>
+                  <div style={{ color: colors.textMuted, fontSize: 13, marginTop: 4 }}>
+                    {inc.message || incidentLifecycleLabel(inc)}
+                  </div>
+                </div>
               </li>
             )
           })}
@@ -621,15 +638,194 @@ function ServicesPanel({ host }: { host: Host }) {
   )
 }
 
+function AlertRulesTab({
+  host, setHostField, servicesText, setServicesText, saving, onSubmit,
+}: {
+  host: Host
+  setHostField: <K extends keyof Host>(key: K, value: Host[K]) => void
+  servicesText: string
+  setServicesText: (v: string) => void
+  saving: boolean
+  onSubmit: (e: FormEvent) => void
+}) {
+  return (
+    <form onSubmit={onSubmit}>
+      <p style={{ color: colors.textMuted, fontSize: 14, marginTop: 0 }}>
+        Warning defaults to 80, critical to 90. Load is compared to CPU cores. Alerts fire only after the value stays high for the duration.
+      </p>
+      <AlertFold title="CPU Alert" on={host.alert_cpu_enabled}>
+        <MetricToggle
+          collect={host.collect_cpu} onCollect={v => setHostField('collect_cpu', v)}
+          alert={host.alert_cpu_enabled} onAlert={v => setHostField('alert_cpu_enabled', v)}
+          warning={host.alert_cpu_warning} onWarning={v => setHostField('alert_cpu_warning', v)}
+          threshold={host.alert_cpu_threshold} onThreshold={v => setHostField('alert_cpu_threshold', v)}
+          minutes={minutesFromSamples(host.alert_cpu_after, host.interval_seconds)}
+          onMinutes={m => setHostField('alert_cpu_after', samplesFromMinutes(m, host.interval_seconds))}
+        />
+      </AlertFold>
+      <AlertFold title="Memory Alert" on={host.alert_memory_enabled}>
+        <MetricToggle
+          collect={host.collect_memory} onCollect={v => setHostField('collect_memory', v)}
+          alert={host.alert_memory_enabled} onAlert={v => setHostField('alert_memory_enabled', v)}
+          warning={host.alert_memory_warning} onWarning={v => setHostField('alert_memory_warning', v)}
+          threshold={host.alert_memory_threshold} onThreshold={v => setHostField('alert_memory_threshold', v)}
+          minutes={minutesFromSamples(host.alert_memory_after, host.interval_seconds)}
+          onMinutes={m => setHostField('alert_memory_after', samplesFromMinutes(m, host.interval_seconds))}
+        />
+      </AlertFold>
+      <AlertFold title="Swap Alert" on={host.alert_swap_enabled}>
+        <MetricToggle
+          collect={host.collect_swap} onCollect={v => setHostField('collect_swap', v)}
+          alert={host.alert_swap_enabled} onAlert={v => setHostField('alert_swap_enabled', v)}
+          warning={host.alert_swap_warning} onWarning={v => setHostField('alert_swap_warning', v)}
+          threshold={host.alert_swap_threshold} onThreshold={v => setHostField('alert_swap_threshold', v)}
+          minutes={minutesFromSamples(host.alert_swap_after, host.interval_seconds)}
+          onMinutes={m => setHostField('alert_swap_after', samplesFromMinutes(m, host.interval_seconds))}
+        />
+      </AlertFold>
+      <AlertFold title="Disk Alert" on={host.alert_disk_enabled}>
+        <MetricToggle
+          collect={host.collect_disk} onCollect={v => setHostField('collect_disk', v)}
+          alert={host.alert_disk_enabled} onAlert={v => setHostField('alert_disk_enabled', v)}
+          warning={host.alert_disk_warning} onWarning={v => setHostField('alert_disk_warning', v)}
+          threshold={host.alert_disk_threshold} onThreshold={v => setHostField('alert_disk_threshold', v)}
+          minutes={minutesFromSamples(host.alert_disk_after, host.interval_seconds)}
+          onMinutes={m => setHostField('alert_disk_after', samplesFromMinutes(m, host.interval_seconds))}
+        />
+      </AlertFold>
+      <AlertFold title="Load Alert" on={host.alert_load_enabled}>
+        <MetricToggle
+          collect={host.collect_load} onCollect={v => setHostField('collect_load', v)}
+          alert={host.alert_load_enabled} onAlert={v => setHostField('alert_load_enabled', v)}
+          warning={host.alert_load_warning} onWarning={v => setHostField('alert_load_warning', v)}
+          threshold={host.alert_load_threshold} onThreshold={v => setHostField('alert_load_threshold', v)}
+          minutes={minutesFromSamples(host.alert_load_after, host.interval_seconds)}
+          onMinutes={m => setHostField('alert_load_after', samplesFromMinutes(m, host.interval_seconds))}
+          thresholdHint="0 = 90% of CPU cores"
+        />
+      </AlertFold>
+      <AlertFold title="I/O Wait Alert" on={host.alert_iowait_enabled}>
+        <MetricToggle
+          collect={host.collect_iowait} onCollect={v => setHostField('collect_iowait', v)}
+          alert={host.alert_iowait_enabled} onAlert={v => setHostField('alert_iowait_enabled', v)}
+          warning={host.alert_iowait_warning} onWarning={v => setHostField('alert_iowait_warning', v)}
+          threshold={host.alert_iowait_threshold} onThreshold={v => setHostField('alert_iowait_threshold', v)}
+          minutes={minutesFromSamples(host.alert_iowait_after, host.interval_seconds)}
+          onMinutes={m => setHostField('alert_iowait_after', samplesFromMinutes(m, host.interval_seconds))}
+        />
+      </AlertFold>
+      <AlertFold title="Security Alert" on={host.alert_auth_enabled || host.alert_root_login_enabled || host.alert_reboot_enabled}>
+        <label style={styles.check}>
+          <input type="checkbox" checked={host.collect_security} onChange={e => setHostField('collect_security', e.target.checked)} />
+          Collect auth logs
+        </label>
+        <div style={{ ...styles.metricRow, borderBottom: 'none' }}>
+          <label style={styles.check}>
+            <input type="checkbox" checked={host.alert_auth_enabled} disabled={!host.collect_security} onChange={e => setHostField('alert_auth_enabled', e.target.checked)} />
+            Auth burst
+          </label>
+          <label className="field" style={{ margin: 0, width: 180 }}>
+            <span className="field-label">Failures / 5 min</span>
+            <input type="number" min={1} className="input" disabled={!host.alert_auth_enabled} value={host.alert_auth_threshold} onChange={e => setHostField('alert_auth_threshold', Number(e.target.value) || 50)} />
+          </label>
+          <label style={styles.check}>
+            <input type="checkbox" checked={host.alert_root_login_enabled} disabled={!host.collect_security} onChange={e => setHostField('alert_root_login_enabled', e.target.checked)} />
+            Root login
+          </label>
+          <label style={styles.check}>
+            <input type="checkbox" checked={host.alert_reboot_enabled} onChange={e => setHostField('alert_reboot_enabled', e.target.checked)} />
+            Reboot required
+          </label>
+        </div>
+      </AlertFold>
+      <AlertFold title="Service Alert" on={host.alert_service_enabled}>
+        <p style={{ color: colors.textMuted, fontSize: 13, marginTop: 12 }}>One systemd unit per line (e.g. nginx, sshd, postgresql).</p>
+        <label style={styles.check}>
+          <input type="checkbox" checked={host.collect_services} onChange={e => setHostField('collect_services', e.target.checked)} />
+          Collect service status
+        </label>
+        <label style={{ ...styles.check, marginLeft: 16 }}>
+          <input type="checkbox" checked={host.alert_service_enabled} disabled={!host.collect_services} onChange={e => setHostField('alert_service_enabled', e.target.checked)} />
+          Alert if a watched service is not active
+        </label>
+        <textarea
+          className="input"
+          rows={4}
+          disabled={!host.collect_services}
+          value={servicesText}
+          onChange={e => setServicesText(e.target.value)}
+          placeholder={'nginx\nsshd'}
+          style={{ marginTop: 12, fontFamily: 'ui-monospace, monospace', fontSize: 13 }}
+        />
+      </AlertFold>
+
+      <Panel style={{ marginTop: 8 }}>
+        <div className="grid-2">
+          <label className="field">
+            <span className="field-label">Report interval (seconds)</span>
+            <input type="number" min={30} max={300} className="input" value={host.interval_seconds} onChange={e => setHostField('interval_seconds', Number(e.target.value) || 30)} />
+          </label>
+          <label className="field">
+            <span className="field-label">Offline after missed reports</span>
+            <input type="number" min={1} className="input" value={host.alert_after_failures} onChange={e => setHostField('alert_after_failures', Number(e.target.value) || 2)} />
+          </label>
+        </div>
+        <div style={{ display: 'flex', gap: 16, marginTop: 16, flexWrap: 'wrap' }}>
+          <label style={styles.check}>
+            <input type="checkbox" checked={host.notify_email} onChange={e => setHostField('notify_email', e.target.checked)} />
+            Email
+          </label>
+          <label style={styles.check}>
+            <input type="checkbox" checked={host.notify_slack} onChange={e => setHostField('notify_slack', e.target.checked)} />
+            Slack
+          </label>
+          <label style={styles.check}>
+            <input type="checkbox" checked={host.notify_webhooks} onChange={e => setHostField('notify_webhooks', e.target.checked)} />
+            Webhooks
+          </label>
+        </div>
+        <div style={{ marginTop: 20 }}>
+          <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save monitoring'}</button>
+        </div>
+      </Panel>
+    </form>
+  )
+}
+
+function AlertFold({ title, on, children }: { title: string; on: boolean; children: ReactNode }) {
+  return (
+    <details className="alert-fold">
+      <summary>
+        <span>{title}</span>
+        <span style={{ color: on ? colors.yellow : colors.textMuted, fontSize: 13, fontWeight: 500, marginLeft: 'auto', marginRight: 8 }}>
+          {on ? 'On' : 'Off'}
+        </span>
+      </summary>
+      <div className="alert-fold-body">{children}</div>
+    </details>
+  )
+}
+
+function HealthStat({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: colors.textMuted, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 600, color: color || colors.text, fontFamily: fonts.mono, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+    </div>
+  )
+}
+
+function InfoRow({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div style={styles.dlRow}>
+      <div style={styles.dt}>{label}</div>
+      <div style={{ ...styles.dd, color: color || colors.text }} title={value}>{value}</div>
+    </div>
+  )
+}
+
 function MetricChart({
-  title,
-  data,
-  dataKey,
-  color,
-  unit,
-  warning,
-  critical,
-  domain,
+  title, data, dataKey, color, unit, warning, critical, domain,
 }: {
   title: string
   data: ChartPoint[]
@@ -657,14 +853,7 @@ function MetricChart({
               </defs>
               <CartesianGrid stroke={chartGridStroke} vertical={false} />
               <XAxis dataKey="time" tick={chartTick} axisLine={false} tickLine={false} />
-              <YAxis
-                domain={domain}
-                unit={unit}
-                tick={chartTick}
-                axisLine={false}
-                tickLine={false}
-                width={unit ? 52 : 40}
-              />
+              <YAxis domain={domain} unit={unit} tick={chartTick} axisLine={false} tickLine={false} width={unit ? 52 : 40} />
               <Tooltip
                 contentStyle={chartTooltipStyle}
                 labelStyle={chartTooltipLabel}
@@ -676,15 +865,7 @@ function MetricChart({
               {critical != null && (
                 <ReferenceLine y={critical} stroke={colors.red} strokeDasharray="4 4" label={{ value: 'Crit', fill: colors.red, fontSize: 12 }} />
               )}
-              <Area
-                type="monotone"
-                dataKey={dataKey}
-                stroke={color}
-                fill={`url(#${gradId})`}
-                strokeWidth={2}
-                name={title}
-                connectNulls
-              />
+              <Area type="monotone" dataKey={dataKey} stroke={color} fill={`url(#${gradId})`} strokeWidth={2} name={title} connectNulls />
             </AreaChart>
           </ResponsiveContainer>
         ) : (
@@ -696,9 +877,8 @@ function MetricChart({
 }
 
 function MetricToggle({
-  label, collect, onCollect, alert, onAlert, warning, onWarning, threshold, onThreshold, minutes, onMinutes, thresholdHint,
+  collect, onCollect, alert, onAlert, warning, onWarning, threshold, onThreshold, minutes, onMinutes, thresholdHint,
 }: {
-  label: string
   collect: boolean
   onCollect: (v: boolean) => void
   alert: boolean
@@ -712,8 +892,7 @@ function MetricToggle({
   thresholdHint?: string
 }) {
   return (
-    <div style={styles.metricRow}>
-      <div style={{ fontWeight: 600, width: 88 }}>{label}</div>
+    <div style={{ ...styles.metricRow, borderBottom: 'none', paddingTop: 16 }}>
       <label style={styles.check}>
         <input type="checkbox" checked={collect} onChange={e => onCollect(e.target.checked)} />
         Collect
@@ -733,22 +912,15 @@ function MetricToggle({
       </label>
       <label className="field" style={{ margin: 0, width: 140 }}>
         <span className="field-label">For (minutes)</span>
-        <input
-          type="number"
-          min={1}
-          className="input"
-          disabled={!alert}
-          value={minutes}
-          onChange={e => onMinutes(Number(e.target.value) || 1)}
-        />
+        <input type="number" min={1} className="input" disabled={!alert} value={minutes} onChange={e => onMinutes(Number(e.target.value) || 1)} />
       </label>
     </div>
   )
 }
 
-const styles: Record<string, React.CSSProperties> = {
+const styles: Record<string, CSSProperties> = {
   back: { color: colors.textMuted, textDecoration: 'none' },
-  empty: { color: colors.textMuted, padding: 40, textAlign: 'center' },
+  empty: { color: colors.textMuted, padding: 32, textAlign: 'center' },
   check: { display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 14 },
   metricRow: {
     display: 'flex',
@@ -760,9 +932,15 @@ const styles: Record<string, React.CSSProperties> = {
   },
   barTrack: { height: 8, borderRadius: 99, background: colors.borderLight, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: 99 },
-  dl: { margin: 0 },
-  dlRow: { display: 'flex', justifyContent: 'space-between', gap: 16, padding: '8px 0', borderBottom: `1px solid ${colors.border}`, fontSize: 14 },
-  dt: { color: colors.textMuted, margin: 0 },
-  dd: { margin: 0, fontWeight: 600 },
-  svcRow: { display: 'flex', justifyContent: 'space-between', gap: 12, padding: '8px 0', borderBottom: `1px solid ${colors.border}`, fontSize: 14 },
+  dlRow: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+    padding: '10px 0',
+    borderBottom: `1px solid ${colors.border}`,
+    fontSize: 14,
+    minWidth: 0,
+  },
+  dt: { color: colors.textMuted, margin: 0, fontSize: 12, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' },
+  dd: { margin: 0, fontWeight: 600, overflowWrap: 'anywhere', minWidth: 0 },
 }

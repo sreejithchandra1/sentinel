@@ -19,6 +19,7 @@ func collectMetrics(cfg models.HostAgentConfig) (*models.HostIngestPayload, erro
 		OSVersion:      osPrettyName(),
 		KernelVersion:  kernelRelease(),
 		RebootRequired: rebootRequired(),
+		UptimeSeconds:  uptimeSeconds(),
 	}
 	if cfg.CollectCPU || cfg.CollectIOWait {
 		cpu, iowait, err := cpuAndIOWait()
@@ -101,6 +102,22 @@ func rebootRequired() bool {
 	}
 	_, err = os.Stat("/var/run/reboot-required")
 	return err == nil
+}
+
+func uptimeSeconds() int {
+	raw, err := os.ReadFile("/proc/uptime")
+	if err != nil {
+		return 0
+	}
+	fields := strings.Fields(string(raw))
+	if len(fields) == 0 {
+		return 0
+	}
+	n, err := strconv.ParseFloat(fields[0], 64)
+	if err != nil || n < 0 {
+		return 0
+	}
+	return int(n)
 }
 
 func cpuAndIOWait() (cpuPct, ioWaitPct float64, err error) {

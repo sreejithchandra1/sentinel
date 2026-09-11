@@ -63,6 +63,7 @@ type Host struct {
 	Arch               string     `json:"arch,omitempty"`
 	AgentVersion       string     `json:"agent_version,omitempty"`
 	NumCPU             int        `json:"num_cpu,omitempty"`
+	UptimeSeconds      int        `json:"uptime_seconds,omitempty"`
 	RebootRequired     bool       `json:"reboot_required"`
 	LastSeenAt         *time.Time `json:"last_seen_at,omitempty"`
 	Status             HostStatus `json:"status"`
@@ -183,6 +184,7 @@ type HostIngestPayload struct {
 	OSVersion      string              `json:"os_version"`
 	KernelVersion  string              `json:"kernel_version"`
 	RebootRequired bool                `json:"reboot_required"`
+	UptimeSeconds  int                 `json:"uptime_seconds"`
 	CPUPercent     *float64            `json:"cpu_percent"`
 	MemPercent     *float64            `json:"mem_percent"`
 	SwapPercent    *float64            `json:"swap_percent"`

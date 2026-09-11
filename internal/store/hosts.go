@@ -9,7 +9,7 @@ import (
 )
 
 const hostColumns = `id, name, hostname, tenant_id, os, os_version, kernel_version, arch, agent_version,
-num_cpu, reboot_required, last_seen_at, status,
+num_cpu, reboot_required, uptime_seconds, last_seen_at, status,
 enabled, interval_seconds, alert_after_failures, consecutive_misses,
 collect_cpu, collect_memory, collect_disk, collect_load, collect_swap, collect_iowait, collect_security, collect_services,
 alert_cpu_enabled, alert_cpu_warning, alert_cpu_threshold, alert_cpu_after,
@@ -26,7 +26,7 @@ created_at, updated_at`
 type hostScanRow struct {
 	id, name, hostname, tenantID, os, osVersion, kernel, arch, agentVersion, status string
 	lastSeenAt, createdAt, updatedAt                                                sql.NullString
-	numCPU, rebootRequired                                                          int
+	numCPU, rebootRequired, uptimeSeconds                                           int
 	enabled                                                                         int
 	collectCPU, collectMemory, collectDisk, collectLoad                             int
 	collectSwap, collectIOWait, collectSecurity, collectServices                    int
@@ -46,7 +46,7 @@ type hostScanRow struct {
 func (r *hostScanRow) scan(row interface{ Scan(dest ...any) error }) error {
 	return row.Scan(
 		&r.id, &r.name, &r.hostname, &r.tenantID, &r.os, &r.osVersion, &r.kernel, &r.arch, &r.agentVersion,
-		&r.numCPU, &r.rebootRequired, &r.lastSeenAt, &r.status,
+		&r.numCPU, &r.rebootRequired, &r.uptimeSeconds, &r.lastSeenAt, &r.status,
 		&r.enabled, &r.intervalSeconds, &r.alertAfter, &r.consecutiveMisses,
 		&r.collectCPU, &r.collectMemory, &r.collectDisk, &r.collectLoad,
 		&r.collectSwap, &r.collectIOWait, &r.collectSecurity, &r.collectServices,
@@ -75,6 +75,7 @@ func (r *hostScanRow) toHost() models.Host {
 		Arch:                  r.arch,
 		AgentVersion:          r.agentVersion,
 		NumCPU:                r.numCPU,
+		UptimeSeconds:         r.uptimeSeconds,
 		RebootRequired:        intToBool(r.rebootRequired),
 		LastSeenAt:            nullableTime(r.lastSeenAt),
 		Status:                models.HostStatus(r.status),
@@ -321,16 +322,18 @@ func (s *Store) TouchHostSeen(id string, hostname, osName, arch, agentVersion st
 	return err
 }
 
-func (s *Store) UpdateHostSnapshot(id string, osVersion, kernel string, reboot bool, disks []models.HostDisk, services []models.HostServiceStatus, sec *models.HostSecurity) error {
+func (s *Store) UpdateHostSnapshot(id string, osVersion, kernel string, reboot bool, uptimeSeconds int, disks []models.HostDisk, services []models.HostServiceStatus, sec *models.HostSecurity) error {
 	_, err := s.db.Exec(`
 		UPDATE hosts SET
 			os_version = CASE WHEN ? != '' THEN ? ELSE os_version END,
 			kernel_version = CASE WHEN ? != '' THEN ? ELSE kernel_version END,
 			reboot_required = ?,
+			uptime_seconds = CASE WHEN ? > 0 THEN ? ELSE uptime_seconds END,
 			disks_latest_json = ?, services_latest_json = ?, security_json = ?,
 			updated_at = ?
 		WHERE id = ?`,
 		osVersion, osVersion, kernel, kernel, boolToInt(reboot),
+		uptimeSeconds, uptimeSeconds,
 		marshalJSON(disks), marshalJSON(services), marshalJSON(sec),
 		formatTime(time.Now().UTC()), id,
 	)

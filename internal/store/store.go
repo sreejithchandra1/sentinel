@@ -123,6 +123,9 @@ func (s *Store) migrate() error {
 	if err := s.migrateV24(); err != nil {
 		return fmt.Errorf("run v24 migrations: %w", err)
 	}
+	if err := s.migrateV25(); err != nil {
+		return fmt.Errorf("run v25 migrations: %w", err)
+	}
 	return nil
 }
 
