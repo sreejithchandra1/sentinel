@@ -52,14 +52,8 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const t0 = performance.now()
     api.getProfile()
-      .then(profile => {
-        // #region agent log
-        fetch('http://127.0.0.1:7473/ingest/49c06dfb-d2a4-42ad-83ca-3f7de467dc84',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f7d7ab'},body:JSON.stringify({sessionId:'f7d7ab',runId:'pre-fix',hypothesisId:'D',location:'App.tsx:profile',message:'Auth gate complete',data:{ms:Math.round(performance.now()-t0),path:location.pathname},timestamp:Date.now()})}).catch(()=>{})
-        // #endregion
-        setUser(profile); setAuthed(true)
-      })
+      .then(profile => { setUser(profile); setAuthed(true) })
       .catch(() => setAuthed(false))
   }, [])
 
