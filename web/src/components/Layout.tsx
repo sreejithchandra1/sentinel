@@ -120,7 +120,7 @@ export default function Layout({ children, onLogout }: { children: ReactNode; on
 
   useEffect(() => {
     api.getGeneral().then(setOrg).catch(() => {})
-  }, [location.pathname])
+  }, [])
 
   useEffect(() => {
     if (!org) return

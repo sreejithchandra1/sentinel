@@ -21,7 +21,7 @@ export default function ProfileMenu({ onLogout, collapsed }: { onLogout: () => v
 
   useEffect(() => {
     api.getProfile().then(setProfile).catch(() => {})
-  }, [location.pathname])
+  }, [])
 
   useEffect(() => {
     setOpen(false)
