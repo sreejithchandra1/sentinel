@@ -3,7 +3,27 @@ package api
 import (
 	"log"
 	"net/http"
+	"time"
 )
+
+func sessionCookie(value string, expires time.Time) *http.Cookie {
+	c := &http.Cookie{
+		Name:     "sentinel_session",
+		Value:    value,
+		Path:     "/",
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+		Expires:  expires,
+	}
+	c.HttpOnly = true
+	return c
+}
+
+func clearSessionCookie() *http.Cookie {
+	c := sessionCookie("", time.Unix(0, 0).UTC())
+	c.MaxAge = -1
+	return c
+}
 
 func maskPassword(p string) string {
 	if p == "" {
@@ -17,14 +37,4 @@ func jsonInternal(w http.ResponseWriter, err error) {
 		log.Printf("api: %v", err)
 	}
 	jsonError(w, http.StatusInternalServerError, "internal error")
-}
-
-func cookieSecure(r *http.Request, dashboardURL string) bool {
-	if r.TLS != nil {
-		return true
-	}
-	if r.Header.Get("X-Forwarded-Proto") == "https" {
-		return true
-	}
-	return len(dashboardURL) >= 8 && (dashboardURL[:8] == "https://")
 }

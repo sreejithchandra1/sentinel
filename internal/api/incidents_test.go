@@ -24,7 +24,7 @@ func withSession(t *testing.T, st interface {
 func authedReq(t *testing.T, handler http.Handler, method, path, sessionID string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(method, path, nil)
-	req.AddCookie(&http.Cookie{Name: "sentinel_session", Value: sessionID})
+	req.AddCookie(&http.Cookie{Name: "sentinel_session", Value: sessionID, HttpOnly: true, Secure: true})
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	return rec

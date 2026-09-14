@@ -41,7 +41,7 @@ func (a *Alerter) fireSlack(tenantID string, meta AlertMeta) {
 			return
 		}
 		req.Header.Set("Content-Type", "application/json")
-		client := &http.Client{Timeout: 10 * time.Second}
+		client := outboundHTTPClient(10 * time.Second)
 		resp, err := client.Do(req)
 		if err != nil {
 			log.Printf("slack: FAIL: %v", err)
@@ -83,7 +83,7 @@ func (a *Alerter) SendTestSlack(tenantID string) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := outboundHTTPClient(10 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
 		return err

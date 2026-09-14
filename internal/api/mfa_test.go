@@ -66,6 +66,19 @@ func postJSON(t *testing.T, handler http.Handler, path string, body any) *httpte
 	return rec
 }
 
+func assertSecureSessionCookie(t *testing.T, setCookie string) {
+	t.Helper()
+	if !strings.Contains(setCookie, "sentinel_session=") {
+		t.Fatalf("expected session cookie, got %q", setCookie)
+	}
+	if !strings.Contains(setCookie, "HttpOnly") {
+		t.Fatalf("expected HttpOnly session cookie, got %q", setCookie)
+	}
+	if !strings.Contains(setCookie, "Secure") {
+		t.Fatalf("expected Secure session cookie, got %q", setCookie)
+	}
+}
+
 func decodeLoginResponse(t *testing.T, rec *httptest.ResponseRecorder) loginResponse {
 	t.Helper()
 	var out loginResponse
@@ -98,9 +111,7 @@ func TestLoginWithoutMFAStillCreatesSession(t *testing.T) {
 	if !resp.OK || resp.MFARequired {
 		t.Fatalf("unexpected login response: %+v", resp)
 	}
-	if !strings.Contains(rec.Header().Get("Set-Cookie"), "sentinel_session=") {
-		t.Fatalf("expected session cookie, got %q", rec.Header().Get("Set-Cookie"))
-	}
+	assertSecureSessionCookie(t, rec.Header().Get("Set-Cookie"))
 }
 
 func TestMFALoginRequiresVerificationAndCreatesSessionAfterCode(t *testing.T) {
@@ -151,9 +162,7 @@ func TestMFALoginRequiresVerificationAndCreatesSessionAfterCode(t *testing.T) {
 	if !verifyResp.OK {
 		t.Fatalf("expected verified login, got %+v", verifyResp)
 	}
-	if !strings.Contains(verifyRec.Header().Get("Set-Cookie"), "sentinel_session=") {
-		t.Fatalf("expected session cookie, got %q", verifyRec.Header().Get("Set-Cookie"))
-	}
+	assertSecureSessionCookie(t, verifyRec.Header().Get("Set-Cookie"))
 }
 
 func TestMFALoginResendReplacesOldChallenge(t *testing.T) {

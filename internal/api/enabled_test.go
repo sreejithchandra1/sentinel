@@ -18,7 +18,7 @@ func authedJSON(t *testing.T, handler http.Handler, method, path, sessionID stri
 	}
 	req := httptest.NewRequest(method, path, bytes.NewReader(data))
 	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(&http.Cookie{Name: "sentinel_session", Value: sessionID})
+	req.AddCookie(&http.Cookie{Name: "sentinel_session", Value: sessionID, HttpOnly: true, Secure: true})
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	return rec
