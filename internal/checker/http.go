@@ -113,7 +113,10 @@ func (c *Checker) probeHTTP(ctx context.Context, m *models.Monitor) *models.Chec
 			DialContext:           safehost.ControlDialContext,
 			TLSHandshakeTimeout:   timeout,
 			ResponseHeaderTimeout: timeout,
-			TLSClientConfig:       &tls.Config{InsecureSkipVerify: false},
+			TLSClientConfig: &tls.Config{
+				MinVersion:         tls.VersionTLS13,
+				InsecureSkipVerify: false,
+			},
 		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if !m.FollowRedirects {

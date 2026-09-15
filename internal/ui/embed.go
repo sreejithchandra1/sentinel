@@ -41,7 +41,7 @@ func spa(fileServer http.Handler, assets fs.FS) http.Handler {
 					http.NotFound(w, r)
 					return
 				}
-				if statErr == nil && !stat.IsDir() {
+				if statErr == nil {
 					fileServer.ServeHTTP(w, r)
 					return
 				}

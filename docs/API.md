@@ -46,7 +46,7 @@ Viewers can read monitors, performance, incidents, SLA, and their own tokens/pro
 Two equivalent ways to call protected routes:
 
 1. **API token** (preferred for scripts): `Authorization: Bearer <token>`
-2. **Session cookie** after `POST /api/auth/login`: `Cookie: sentinel_session=...` (HttpOnly, 24h, SameSite=Lax)
+2. **Session cookie** after `POST /api/auth/login`: `Cookie: sentinel_session=...` (HttpOnly, Secure, 24h, SameSite=Lax)
 
 Create tokens at **Settings → API Tokens** or `POST /api/settings/tokens`. The raw token is returned **once**.
 

@@ -13,30 +13,57 @@ import (
 	"github.com/sentinel-monitoring/sentinel/internal/store"
 )
 
+type prober interface {
+	Probe(ctx context.Context, m *models.Monitor) *models.CheckResult
+	ProbePerformance(ctx context.Context, t *models.PerformanceTarget) *models.PerformanceResult
+}
+
+type probeJob struct {
+	monitor *models.Monitor
+	target  *models.PerformanceTarget
+}
+
 type Scheduler struct {
-	store       *store.Store
-	checker     *checker.Checker
-	alerter     *alerter.Alerter
-	workers     int
-	retention   int
-	lastRun     map[string]time.Time
-	perfLastRun map[string]time.Time
-	mu          sync.Mutex
+	store     *store.Store
+	checker   prober
+	alerter   *alerter.Alerter
+	workers   int
+	retention int
+	jobs      chan probeJob
+	lastRun   map[string]time.Time
+	inFlight  map[string]struct{}
+	mu        sync.Mutex
 }
 
 func New(s *store.Store, c *checker.Checker, a *alerter.Alerter, workers, retentionDays int) *Scheduler {
+	return newScheduler(s, c, a, workers, retentionDays)
+}
+
+func newScheduler(s *store.Store, c prober, a *alerter.Alerter, workers, retentionDays int) *Scheduler {
+	if workers < 1 {
+		workers = 1
+	}
+	queue := workers * 4
+	if queue < 8 {
+		queue = 8
+	}
 	return &Scheduler{
-		store:       s,
-		checker:     c,
-		alerter:     a,
-		workers:     workers,
-		retention:   retentionDays,
-		lastRun:     make(map[string]time.Time),
-		perfLastRun: make(map[string]time.Time),
+		store:     s,
+		checker:   c,
+		alerter:   a,
+		workers:   workers,
+		retention: retentionDays,
+		jobs:      make(chan probeJob, queue),
+		lastRun:   make(map[string]time.Time),
+		inFlight:  make(map[string]struct{}),
 	}
 }
 
 func (sch *Scheduler) Start(ctx context.Context) {
+	for i := 0; i < sch.workers; i++ {
+		go sch.worker(ctx)
+	}
+
 	ticker := time.NewTicker(5 * time.Second)
 	pruneTicker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
@@ -47,8 +74,8 @@ func (sch *Scheduler) Start(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			sch.tick(ctx)
-			sch.tickPerformance(ctx)
+			sch.enqueueMonitors(ctx)
+			sch.enqueuePerformance(ctx)
 			sch.tickHosts()
 		case <-pruneTicker.C:
 			sch.prune()
@@ -56,49 +83,126 @@ func (sch *Scheduler) Start(ctx context.Context) {
 	}
 }
 
-func (sch *Scheduler) tick(ctx context.Context) {
+func (sch *Scheduler) worker(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case job := <-sch.jobs:
+			sch.runJob(ctx, job)
+		}
+	}
+}
+
+func (sch *Scheduler) runJob(ctx context.Context, job probeJob) {
+	switch {
+	case job.monitor != nil:
+		id := monitorKey(job.monitor.ID)
+		sch.noteRun(id)
+		defer sch.releaseRun(id)
+		sch.runCheck(ctx, job.monitor)
+	case job.target != nil:
+		id := perfKey(job.target.ID)
+		sch.noteRun(id)
+		defer sch.releaseRun(id)
+		sch.runPerformanceCheck(ctx, job.target)
+	}
+}
+
+func (sch *Scheduler) enqueueMonitors(ctx context.Context) {
 	monitors, err := sch.store.ListEnabledMonitors()
 	if err != nil {
 		log.Printf("scheduler: list monitors: %v", err)
 		return
 	}
 
-	sem := make(chan struct{}, sch.workers)
-	var wg sync.WaitGroup
-
+	now := time.Now().UTC()
 	for i := range monitors {
 		m := monitors[i]
-		inMaint, err := sch.store.IsInMaintenance(m.ID, time.Now().UTC())
+		inMaint, err := sch.store.IsInMaintenance(m.ID, now)
 		if err == nil && inMaint {
 			continue
 		}
-		if !sch.shouldRun(m) {
+		key := monitorKey(m.ID)
+		if !sch.claimRun(key, m.IntervalSeconds, m.LastCheckedAt) {
 			continue
 		}
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(mon models.Monitor) {
-			defer wg.Done()
-			defer func() { <-sem }()
-			sch.runCheck(ctx, &mon)
-		}(m)
+		job := probeJob{monitor: &m}
+		if !sch.submit(ctx, job) {
+			sch.releaseRun(key)
+		}
 	}
-	wg.Wait()
 }
 
-func (sch *Scheduler) shouldRun(m models.Monitor) bool {
+func (sch *Scheduler) enqueuePerformance(ctx context.Context) {
+	targets, err := sch.store.ListEnabledPerformanceTargets()
+	if err != nil {
+		log.Printf("scheduler: list performance targets: %v", err)
+		return
+	}
+
+	for i := range targets {
+		t := targets[i]
+		key := perfKey(t.ID)
+		if !sch.claimRun(key, t.IntervalSeconds, t.LastCheckedAt) {
+			continue
+		}
+		job := probeJob{target: &t}
+		if !sch.submit(ctx, job) {
+			sch.releaseRun(key)
+		}
+	}
+}
+
+func (sch *Scheduler) submit(ctx context.Context, job probeJob) bool {
+	select {
+	case sch.jobs <- job:
+		return true
+	case <-ctx.Done():
+		return false
+	default:
+		return false
+	}
+}
+
+func (sch *Scheduler) claimRun(id string, intervalSec int, lastChecked *time.Time) bool {
+	if intervalSec < 1 {
+		intervalSec = 60
+	}
+	interval := time.Duration(intervalSec) * time.Second
+
 	sch.mu.Lock()
 	defer sch.mu.Unlock()
-	last, ok := sch.lastRun[m.ID]
+	if _, busy := sch.inFlight[id]; busy {
+		return false
+	}
+	last, ok := sch.lastRun[id]
 	if !ok {
-		sch.lastRun[m.ID] = time.Now()
-		return true
+		if lastChecked != nil && !lastChecked.IsZero() {
+			last = lastChecked.UTC()
+			sch.lastRun[id] = last
+		} else {
+			sch.inFlight[id] = struct{}{}
+			return true
+		}
 	}
-	if time.Since(last) >= time.Duration(m.IntervalSeconds)*time.Second {
-		sch.lastRun[m.ID] = time.Now()
-		return true
+	if time.Since(last) < interval {
+		return false
 	}
-	return false
+	sch.inFlight[id] = struct{}{}
+	return true
+}
+
+func (sch *Scheduler) noteRun(id string) {
+	sch.mu.Lock()
+	sch.lastRun[id] = time.Now()
+	sch.mu.Unlock()
+}
+
+func (sch *Scheduler) releaseRun(id string) {
+	sch.mu.Lock()
+	delete(sch.inFlight, id)
+	sch.mu.Unlock()
 }
 
 func (sch *Scheduler) runCheck(ctx context.Context, m *models.Monitor) {
@@ -119,47 +223,6 @@ func (sch *Scheduler) runCheck(ctx context.Context, m *models.Monitor) {
 	}
 }
 
-func (sch *Scheduler) tickPerformance(ctx context.Context) {
-	targets, err := sch.store.ListEnabledPerformanceTargets()
-	if err != nil {
-		log.Printf("scheduler: list performance targets: %v", err)
-		return
-	}
-
-	sem := make(chan struct{}, sch.workers)
-	var wg sync.WaitGroup
-
-	for i := range targets {
-		t := targets[i]
-		if !sch.shouldRunPerf(t.ID, t.IntervalSeconds) {
-			continue
-		}
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(target models.PerformanceTarget) {
-			defer wg.Done()
-			defer func() { <-sem }()
-			sch.runPerformanceCheck(ctx, &target)
-		}(t)
-	}
-	wg.Wait()
-}
-
-func (sch *Scheduler) shouldRunPerf(id string, intervalSec int) bool {
-	sch.mu.Lock()
-	defer sch.mu.Unlock()
-	last, ok := sch.perfLastRun[id]
-	if !ok {
-		sch.perfLastRun[id] = time.Now()
-		return true
-	}
-	if time.Since(last) >= time.Duration(intervalSec)*time.Second {
-		sch.perfLastRun[id] = time.Now()
-		return true
-	}
-	return false
-}
-
 func (sch *Scheduler) runPerformanceCheck(ctx context.Context, t *models.PerformanceTarget) {
 	result := sch.checker.ProbePerformance(ctx, t)
 	if err := sch.store.InsertPerformanceResult(result); err != nil {
@@ -172,7 +235,6 @@ func (sch *Scheduler) runPerformanceCheck(ctx context.Context, t *models.Perform
 	if status == models.StatusDegraded {
 		consecutive++
 	} else {
-		// Up or failed: neither continues a slow streak. Failures are not recovery.
 		consecutive = 0
 	}
 	if err := sch.store.UpdatePerformanceTargetAfterCheck(t.ID, status, consecutive, result.CheckedAt); err != nil {
@@ -231,3 +293,6 @@ func (sch *Scheduler) prune() {
 		log.Printf("scheduler: pruned %d old host samples", hn)
 	}
 }
+
+func monitorKey(id string) string { return "m:" + id }
+func perfKey(id string) string    { return "p:" + id }
