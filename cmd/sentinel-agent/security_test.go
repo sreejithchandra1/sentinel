@@ -31,6 +31,28 @@ func TestParseAuthLogCounts(t *testing.T) {
 	}
 }
 
+func TestAlmaSecureLogJournalMessages(t *testing.T) {
+	now := time.Date(2026, 9, 15, 10, 33, 0, 0, time.UTC)
+	us := strconv.FormatInt(now.Add(-time.Minute).UnixMicro(), 10)
+	raw := strings.Join([]string{
+		`{"MESSAGE":"Connection closed by invalid user co 216.87.32.78 port 17403 [preauth]","__REALTIME_TIMESTAMP":"` + us + `"}`,
+		`{"MESSAGE":"password check failed for user (twohats)","__REALTIME_TIMESTAMP":"` + us + `"}`,
+		`{"MESSAGE":"pam_unix(sudo-i:auth): authentication failure; logname=root uid=10006 euid=0 tty=/dev/pts/1 ruser=twohats rhost=  user=twohats","__REALTIME_TIMESTAMP":"` + us + `"}`,
+		`{"MESSAGE":"password check failed for user (root)","__REALTIME_TIMESTAMP":"` + us + `"}`,
+	}, "\n")
+	sec := &models.HostSecurity{}
+	parseJournalJSON(strings.NewReader(raw), now.Add(-5*time.Minute), now, sec)
+	if sec.SSHFailed5m != 1 {
+		t.Fatalf("ssh=%d, want 1", sec.SSHFailed5m)
+	}
+	if sec.SudoFailed5m != 1 {
+		t.Fatalf("sudo=%d, want 1 (sudo-i:auth)", sec.SudoFailed5m)
+	}
+	if sec.AuthFailed5m != 2 {
+		t.Fatalf("auth=%d, want 2 (unix_chkpwd)", sec.AuthFailed5m)
+	}
+}
+
 func TestParseAuthLogSudoNotInSudoersAlma(t *testing.T) {
 	now := time.Date(2026, 9, 15, 10, 24, 0, 0, time.UTC)
 	log := strings.Join([]string{

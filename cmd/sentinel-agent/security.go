@@ -27,9 +27,11 @@ var (
 		"SYSLOG_IDENTIFIER=sudo",
 		"SYSLOG_IDENTIFIER=su",
 		"SYSLOG_IDENTIFIER=login",
+		"SYSLOG_IDENTIFIER=unix_chkpwd",
 		"+", "_COMM=sshd",
 		"+", "_COMM=sshd-session",
 		"+", "_COMM=sudo",
+		"+", "_COMM=unix_chkpwd",
 		"+", "_SYSTEMD_UNIT=sshd.service",
 		"+", "SYSLOG_IDENTIFIER=cockpit-session",
 		"+", "SYSLOG_FACILITY=4",
@@ -248,18 +250,33 @@ func parseAuthLog(r io.Reader, cutoff, now time.Time, sec *models.HostSecurity) 
 func classifyAuthLine(msg string, ts time.Time, sec *models.HostSecurity) {
 	lower := strings.ToLower(msg)
 	switch {
-	case strings.Contains(lower, "failed password"), strings.Contains(lower, "failed publickey"),
-		strings.Contains(lower, "invalid user") && strings.Contains(lower, "sshd"):
+	case isSSHFailure(lower):
 		sec.SSHFailed5m++
 	case isSudoFailure(lower):
 		sec.SudoFailed5m++
-	case strings.Contains(lower, "authentication failure"):
+	case isAuthFailure(lower):
 		sec.AuthFailed5m++
 	}
 	if isRootLogin(lower) {
 		sec.RootLogins5m++
 		sec.LastRootLogin = ts.UTC().Format(time.RFC3339)
 	}
+}
+
+func isSSHFailure(lower string) bool {
+	if strings.Contains(lower, "failed password") || strings.Contains(lower, "failed publickey") {
+		return true
+	}
+	if strings.Contains(lower, "invalid user") {
+		return true
+	}
+	if strings.Contains(lower, "connection closed by authenticating user") {
+		return true
+	}
+	if strings.Contains(lower, "failed keyboard-interactive") || strings.Contains(lower, "failed none for") {
+		return true
+	}
+	return false
 }
 
 func isSudoFailure(lower string) bool {
@@ -272,11 +289,26 @@ func isSudoFailure(lower string) bool {
 	if strings.Contains(lower, "may not run sudo") || strings.Contains(lower, "not allowed to run sudo") {
 		return true
 	}
-	if strings.Contains(lower, "pam_unix(sudo") && strings.Contains(lower, "authentication failure") {
+	// RHEL: pam_unix(sudo-i:auth): authentication failure  (journal MESSAGE has no "sudo:" prefix)
+	if strings.Contains(lower, "authentication failure") &&
+		(strings.Contains(lower, "sudo-i:auth") || strings.Contains(lower, "sudo:auth") ||
+			strings.Contains(lower, "pam_unix(sudo") || strings.Contains(lower, "sudo[") ||
+			strings.Contains(lower, "sudo:")) {
 		return true
 	}
 	if (strings.Contains(lower, "sudo:") || strings.Contains(lower, "sudo[")) &&
-		(strings.Contains(lower, "authentication failure") || strings.Contains(lower, "incorrect password")) {
+		strings.Contains(lower, "incorrect password") {
+		return true
+	}
+	return false
+}
+
+func isAuthFailure(lower string) bool {
+	if strings.Contains(lower, "authentication failure") {
+		return true
+	}
+	// RHEL unix_chkpwd: "password check failed for user (twohats)"
+	if strings.Contains(lower, "password check failed") {
 		return true
 	}
 	return false
