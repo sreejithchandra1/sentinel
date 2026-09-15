@@ -525,7 +525,7 @@ function SecurityTab({ host }: { host: Host }) {
         <h3 className="panel-title">Security details</h3>
         {sec && !sec.logs_readable && (
           <p style={{ color: colors.yellow, fontSize: 13, marginTop: 0 }}>
-            Auth logs are not readable on this host yet. Re-run the installer so sentinel-agent is in the adm group.
+            Auth logs are not readable. On Alma/RHEL, /var/log/secure is root-only — the agent reads the systemd journal instead (re-install so the unit restarts with the systemd-journal group). On Debian/Ubuntu, sentinel-agent must be in the adm group.
           </p>
         )}
         <InfoRow label="Reboot required" value={host.reboot_required ? 'Yes' : 'No'} color={host.reboot_required ? colors.red : undefined} />

@@ -2,8 +2,13 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
 	"io"
 	"os"
+	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,7 +30,67 @@ func collectSecurity(now time.Time, window time.Duration) *models.HostSecurity {
 		sec.LogsReadable = true
 		return sec
 	}
+	// RHEL/Alma/Rocky: /var/log/secure is root:root 0600. adm does not help; journal does.
+	if collectSecurityJournal(cutoff, now, sec) {
+		sec.LogsReadable = true
+	}
 	return sec
+}
+
+func collectSecurityJournal(cutoff, now time.Time, sec *models.HostSecurity) bool {
+	bin := journalctlPath()
+	if bin == "" {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin,
+		"--no-pager", "--quiet", "-o", "json", "-n", "5000",
+		"--since", cutoff.UTC().Format(time.RFC3339),
+		"SYSLOG_FACILITY=4", "SYSLOG_FACILITY=10",
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	parseJournalJSON(bytes.NewReader(out), cutoff, now, sec)
+	return true
+}
+
+func journalctlPath() string {
+	for _, p := range []string{"/usr/bin/journalctl", "/bin/journalctl"} {
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p
+		}
+	}
+	p, err := exec.LookPath("journalctl")
+	if err != nil {
+		return ""
+	}
+	return p
+}
+
+func parseJournalJSON(r io.Reader, cutoff, now time.Time, sec *models.HostSecurity) {
+	dec := json.NewDecoder(r)
+	for {
+		var rec struct {
+			Message string `json:"MESSAGE"`
+			TS      string `json:"__REALTIME_TIMESTAMP"`
+		}
+		if err := dec.Decode(&rec); err != nil {
+			return
+		}
+		ts := now
+		if rec.TS != "" {
+			if us, err := strconv.ParseInt(rec.TS, 10, 64); err == nil {
+				ts = time.Unix(0, us*int64(time.Microsecond)).UTC()
+			}
+		}
+		if ts.Before(cutoff) {
+			continue
+		}
+		classifyAuthLine(rec.Message, ts, sec)
+	}
 }
 
 func parseAuthLog(r io.Reader, cutoff, now time.Time, sec *models.HostSecurity) {

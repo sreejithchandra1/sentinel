@@ -133,6 +133,9 @@ func ingest(client *http.Client, cfg *agentConfig, payload *models.HostIngestPay
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if resp.StatusCode == http.StatusUnauthorized {
+			return models.HostAgentConfig{}, fmt.Errorf("status 401 (ingest token rejected; re-install so the service restarts with the new token)")
+		}
 		return models.HostAgentConfig{}, fmt.Errorf("status %d", resp.StatusCode)
 	}
 	var out ingestReply

@@ -57,11 +57,13 @@ if [ -z "$ingest_token" ] || [ -z "$host_id" ]; then
 fi
 [ -n "$interval" ] || interval=30
 
+nologin_shell="/usr/sbin/nologin"
+[ -x /sbin/nologin ] && nologin_shell="/sbin/nologin"
 if ! id -u "$AGENT_USER" >/dev/null 2>&1; then
   if command -v useradd >/dev/null 2>&1; then
-    useradd --system --no-create-home --shell /usr/sbin/nologin "$AGENT_USER"
+    useradd --system --no-create-home --shell "$nologin_shell" "$AGENT_USER"
   else
-    adduser --system --no-create-home --group --shell /usr/sbin/nologin "$AGENT_USER"
+    adduser --system --no-create-home --group --shell "$nologin_shell" "$AGENT_USER"
   fi
 fi
 
@@ -125,5 +127,8 @@ EOF
 chmod 0644 "$UNIT_PATH"
 
 systemctl daemon-reload
-systemctl enable --now sentinel-agent.service
+systemctl enable sentinel-agent.service
+# enable --now does not restart an already-running unit, so a re-install would
+# write a new ingest token and leave the old process 401ing.
+systemctl restart sentinel-agent.service
 echo "sentinel-agent installed and started as ${AGENT_USER}"

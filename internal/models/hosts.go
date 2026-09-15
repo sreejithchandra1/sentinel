@@ -27,7 +27,7 @@ const (
 	DefaultHostAuthFailLimit   = 50
 	HostAuthFailWindow         = 5 * time.Minute
 	HostEnrollTTL              = 15 * time.Minute
-	HostAgentVersion           = "1.1.1"
+	HostAgentVersion           = "1.1.2"
 	MaxHostWatchedServices     = 32
 	MaxHostDiskMounts          = 24
 )

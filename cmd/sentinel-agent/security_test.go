@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +25,26 @@ func TestParseAuthLogCounts(t *testing.T) {
 	}
 	if sec.SudoFailed5m != 1 {
 		t.Fatalf("sudo=%d, want 1", sec.SudoFailed5m)
+	}
+	if sec.RootLogins5m != 1 {
+		t.Fatalf("root=%d, want 1", sec.RootLogins5m)
+	}
+}
+
+func TestParseJournalJSON(t *testing.T) {
+	now := time.Date(2026, 9, 15, 7, 30, 0, 0, time.UTC)
+	cutoff := now.Add(-5 * time.Minute)
+	oldTS := strconv.FormatInt(cutoff.Add(-time.Minute).UnixMicro(), 10)
+	newTS := strconv.FormatInt(now.Add(-time.Minute).UnixMicro(), 10)
+	raw := strings.Join([]string{
+		`{"MESSAGE":"Failed password for invalid user admin from 1.2.3.4 port 22 ssh2","__REALTIME_TIMESTAMP":"` + newTS + `"}`,
+		`{"MESSAGE":"Accepted publickey for root from 10.0.0.1 port 22 ssh2","__REALTIME_TIMESTAMP":"` + newTS + `"}`,
+		`{"MESSAGE":"Failed password for nobody from 1.2.3.4 port 22 ssh2","__REALTIME_TIMESTAMP":"` + oldTS + `"}`,
+	}, "\n")
+	sec := &models.HostSecurity{}
+	parseJournalJSON(strings.NewReader(raw), cutoff, now, sec)
+	if sec.SSHFailed5m != 1 {
+		t.Fatalf("ssh=%d, want 1", sec.SSHFailed5m)
 	}
 	if sec.RootLogins5m != 1 {
 		t.Fatalf("root=%d, want 1", sec.RootLogins5m)
