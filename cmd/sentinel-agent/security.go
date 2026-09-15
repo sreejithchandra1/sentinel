@@ -251,8 +251,7 @@ func classifyAuthLine(msg string, ts time.Time, sec *models.HostSecurity) {
 	case strings.Contains(lower, "failed password"), strings.Contains(lower, "failed publickey"),
 		strings.Contains(lower, "invalid user") && strings.Contains(lower, "sshd"):
 		sec.SSHFailed5m++
-	case strings.Contains(lower, "sudo:") && (strings.Contains(lower, "authentication failure") ||
-		strings.Contains(lower, "incorrect password") || strings.Contains(lower, "not in the sudoers")):
+	case isSudoFailure(lower):
 		sec.SudoFailed5m++
 	case strings.Contains(lower, "authentication failure"):
 		sec.AuthFailed5m++
@@ -261,6 +260,26 @@ func classifyAuthLine(msg string, ts time.Time, sec *models.HostSecurity) {
 		sec.RootLogins5m++
 		sec.LastRootLogin = ts.UTC().Format(time.RFC3339)
 	}
+}
+
+func isSudoFailure(lower string) bool {
+	if strings.Contains(lower, "not in sudoers") || strings.Contains(lower, "not in the sudoers") {
+		return true
+	}
+	if strings.Contains(lower, "incorrect password attempt") {
+		return true
+	}
+	if strings.Contains(lower, "may not run sudo") || strings.Contains(lower, "not allowed to run sudo") {
+		return true
+	}
+	if strings.Contains(lower, "pam_unix(sudo") && strings.Contains(lower, "authentication failure") {
+		return true
+	}
+	if (strings.Contains(lower, "sudo:") || strings.Contains(lower, "sudo[")) &&
+		(strings.Contains(lower, "authentication failure") || strings.Contains(lower, "incorrect password")) {
+		return true
+	}
+	return false
 }
 
 func isRootLogin(lower string) bool {

@@ -31,6 +31,32 @@ func TestParseAuthLogCounts(t *testing.T) {
 	}
 }
 
+func TestParseAuthLogSudoNotInSudoersAlma(t *testing.T) {
+	now := time.Date(2026, 9, 15, 10, 24, 0, 0, time.UTC)
+	log := strings.Join([]string{
+		"Sep 15 10:23:57 server sudo[3232390]: twohats : user NOT in sudoers ; TTY=pts/0 ; PWD=/root ; USER=root ; COMMAND=/bin/bash",
+		"Sep 15 10:23:58 server sudo[3232391]: twohats : 3 incorrect password attempts ; TTY=pts/0 ; PWD=/root ; USER=root ; COMMAND=/bin/bash",
+	}, "\n")
+	sec := &models.HostSecurity{}
+	parseAuthLog(strings.NewReader(log), now.Add(-5*time.Minute), now, sec)
+	if sec.SudoFailed5m != 2 {
+		t.Fatalf("sudo=%d, want 2", sec.SudoFailed5m)
+	}
+}
+
+func TestIsSudoFailureJournalMessage(t *testing.T) {
+	// journal MESSAGE has no "sudo:" prefix — identifier lives in a separate field.
+	if !isSudoFailure(strings.ToLower("twohats : user NOT in sudoers ; TTY=pts/0 ; PWD=/root ; USER=root ; COMMAND=/bin/bash")) {
+		t.Fatal("RHEL journal sudoers denial should count")
+	}
+	if !isSudoFailure(strings.ToLower("pam_unix(sudo:auth): authentication failure; logname= uid=1000")) {
+		t.Fatal("pam sudo auth failure should count")
+	}
+	if isSudoFailure(strings.ToLower("sshd[1]: pam_unix(sshd:auth): authentication failure")) {
+		t.Fatal("sshd pam failure is not a sudo failure")
+	}
+}
+
 func TestIsRootLoginAlmaLines(t *testing.T) {
 	cases := []struct {
 		line string
