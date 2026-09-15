@@ -68,9 +68,19 @@ if ! id -u "$AGENT_USER" >/dev/null 2>&1; then
 fi
 
 extra_groups=""
-if getent group adm >/dev/null 2>&1; then extra_groups="${extra_groups} adm"; fi
-if getent group systemd-journal >/dev/null 2>&1; then extra_groups="${extra_groups} systemd-journal"; fi
+add_grp() {
+  if getent group "$1" >/dev/null 2>&1; then
+    if [ -z "$extra_groups" ]; then
+      extra_groups="$1"
+    else
+      extra_groups="$extra_groups $1"
+    fi
+  fi
+}
+add_grp adm
+add_grp systemd-journal
 if [ -n "$extra_groups" ]; then
+  # shellcheck disable=SC2086
   usermod -aG $extra_groups "$AGENT_USER" >/dev/null 2>&1 || true
 fi
 
@@ -120,6 +130,7 @@ CapabilityBoundingSet=
 AmbientCapabilities=
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 SystemCallArchitectures=native
+BindReadOnlyPaths=-/var/log/journal -/run/log/journal -/run/systemd/journal
 
 [Install]
 WantedBy=multi-user.target

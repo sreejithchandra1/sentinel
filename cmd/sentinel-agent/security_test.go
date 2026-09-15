@@ -51,6 +51,32 @@ func TestParseJournalJSON(t *testing.T) {
 	}
 }
 
+func TestParseJournalJSONByteMessageAndNumericTS(t *testing.T) {
+	now := time.Date(2026, 9, 15, 7, 30, 0, 0, time.UTC)
+	cutoff := now.Add(-5 * time.Minute)
+	us := now.Add(-time.Minute).UnixMicro()
+	msg := "Failed password for root from 1.2.3.4 port 22 ssh2"
+	var nums []string
+	for i := 0; i < len(msg); i++ {
+		nums = append(nums, strconv.Itoa(int(msg[i])))
+	}
+	raw := `{"MESSAGE":[` + strings.Join(nums, ",") + `],"__REALTIME_TIMESTAMP":` + strconv.FormatInt(us, 10) + `}`
+	sec := &models.HostSecurity{}
+	parseJournalJSON(strings.NewReader(raw), cutoff, now, sec)
+	if sec.SSHFailed5m != 1 {
+		t.Fatalf("ssh=%d, want 1", sec.SSHFailed5m)
+	}
+}
+
+func TestJournalPermissionDenied(t *testing.T) {
+	if !journalPermissionDenied(nil, "No journal files were opened due to insufficient permissions.\n") {
+		t.Fatal("expected permission denied")
+	}
+	if journalPermissionDenied(nil, "") {
+		t.Fatal("empty stderr is not a permission error")
+	}
+}
+
 func TestNormalizeWatchedServices(t *testing.T) {
 	got := models.NormalizeWatchedServices([]string{" nginx ", "nginx.service", "sshd", "bad name", "ok-unit"})
 	if len(got) != 3 || got[0] != "nginx" || got[1] != "sshd" || got[2] != "ok-unit" {

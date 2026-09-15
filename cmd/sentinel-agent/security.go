@@ -5,17 +5,35 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sentinel-monitoring/sentinel/internal/models"
 )
 
-var authLogPaths = []string{"/var/log/auth.log", "/var/log/secure"}
+var (
+	authLogPaths     = []string{"/var/log/auth.log", "/var/log/secure"}
+	journalFailOnce  sync.Once
+	journalctlArgsOR = []string{
+		"SYSLOG_IDENTIFIER=sshd",
+		"SYSLOG_IDENTIFIER=sshd-session",
+		"SYSLOG_IDENTIFIER=sudo",
+		"SYSLOG_IDENTIFIER=su",
+		"SYSLOG_IDENTIFIER=login",
+		"+", "_COMM=sshd",
+		"+", "_COMM=sudo",
+		"+", "_SYSTEMD_UNIT=sshd.service",
+		"+", "SYSLOG_FACILITY=4",
+		"+", "SYSLOG_FACILITY=10",
+	}
+)
 
 func collectSecurity(now time.Time, window time.Duration) *models.HostSecurity {
 	sec := &models.HostSecurity{}
@@ -30,7 +48,7 @@ func collectSecurity(now time.Time, window time.Duration) *models.HostSecurity {
 		sec.LogsReadable = true
 		return sec
 	}
-	// RHEL/Alma/Rocky: /var/log/secure is root:root 0600. adm does not help; journal does.
+	// RHEL/Alma/Rocky: /var/log/secure is root:root 0600. Read the systemd journal instead.
 	if collectSecurityJournal(cutoff, now, sec) {
 		sec.LogsReadable = true
 	}
@@ -40,21 +58,72 @@ func collectSecurity(now time.Time, window time.Duration) *models.HostSecurity {
 func collectSecurityJournal(cutoff, now time.Time, sec *models.HostSecurity) bool {
 	bin := journalctlPath()
 	if bin == "" {
+		journalFailOnce.Do(func() { log.Printf("security: journalctl not found") })
 		return false
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin,
-		"--no-pager", "--quiet", "-o", "json", "-n", "5000",
-		"--since", cutoff.UTC().Format(time.RFC3339),
-		"SYSLOG_FACILITY=4", "SYSLOG_FACILITY=10",
-	)
-	out, err := cmd.Output()
-	if err != nil {
+
+	// Probe: can we see the system journal at all? --quiet + no matches exits 1.
+	if !journalIsReadable(ctx, bin) {
 		return false
 	}
-	parseJournalJSON(bytes.NewReader(out), cutoff, now, sec)
+
+	args := []string{
+		"--system", "--no-pager", "-o", "json", "-n", "5000",
+		"--since", cutoff.UTC().Format(time.RFC3339),
+	}
+	args = append(args, journalctlArgsOR...)
+	out, stderr, err := runJournalctl(ctx, bin, args...)
+	if journalPermissionDenied(err, stderr) {
+		journalFailOnce.Do(func() { log.Printf("security: journal permission denied: %s", strings.TrimSpace(stderr)) })
+		return false
+	}
+	if len(out) > 0 {
+		parseJournalJSON(bytes.NewReader(out), cutoff, now, sec)
+	}
 	return true
+}
+
+func journalIsReadable(ctx context.Context, bin string) bool {
+	_, stderr, err := runJournalctl(ctx, bin, "--system", "--no-pager", "-n", "1", "-o", "json")
+	if journalPermissionDenied(err, stderr) {
+		journalFailOnce.Do(func() { log.Printf("security: journal not readable: %s", strings.TrimSpace(stderr)) })
+		return false
+	}
+	if err == nil || journalctlNoEntries(err) {
+		return true
+	}
+	if ctx.Err() != nil {
+		journalFailOnce.Do(func() { log.Printf("security: journalctl timed out") })
+		return false
+	}
+	journalFailOnce.Do(func() { log.Printf("security: journalctl: %v %s", err, strings.TrimSpace(stderr)) })
+	return false
+}
+
+func runJournalctl(ctx context.Context, bin string, args ...string) (stdout []byte, stderr string, err error) {
+	cmd := exec.CommandContext(ctx, bin, args...)
+	var out, errBuf bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errBuf
+	err = cmd.Run()
+	return out.Bytes(), errBuf.String(), err
+}
+
+func journalPermissionDenied(err error, stderr string) bool {
+	s := strings.ToLower(stderr)
+	if err != nil {
+		s += " " + strings.ToLower(err.Error())
+	}
+	return strings.Contains(s, "insufficient permissions") ||
+		strings.Contains(s, "no journal files were opened") ||
+		strings.Contains(s, "permission denied")
+}
+
+func journalctlNoEntries(err error) bool {
+	var ee *exec.ExitError
+	return errors.As(err, &ee) && ee.ExitCode() == 1
 }
 
 func journalctlPath() string {
@@ -74,23 +143,62 @@ func parseJournalJSON(r io.Reader, cutoff, now time.Time, sec *models.HostSecuri
 	dec := json.NewDecoder(r)
 	for {
 		var rec struct {
-			Message string `json:"MESSAGE"`
-			TS      string `json:"__REALTIME_TIMESTAMP"`
+			Message json.RawMessage `json:"MESSAGE"`
+			TS      json.RawMessage `json:"__REALTIME_TIMESTAMP"`
 		}
 		if err := dec.Decode(&rec); err != nil {
 			return
 		}
+		msg := decodeJournalString(rec.Message)
 		ts := now
-		if rec.TS != "" {
-			if us, err := strconv.ParseInt(rec.TS, 10, 64); err == nil {
-				ts = time.Unix(0, us*int64(time.Microsecond)).UTC()
-			}
+		if t, ok := decodeJournalTimestamp(rec.TS); ok {
+			ts = t
 		}
 		if ts.Before(cutoff) {
 			continue
 		}
-		classifyAuthLine(rec.Message, ts, sec)
+		classifyAuthLine(msg, ts, sec)
 	}
+}
+
+func decodeJournalString(raw json.RawMessage) string {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	var nums []float64
+	if err := json.Unmarshal(raw, &nums); err == nil {
+		b := make([]byte, len(nums))
+		for i, n := range nums {
+			b[i] = byte(n)
+		}
+		return string(b)
+	}
+	return ""
+}
+
+func decodeJournalTimestamp(raw json.RawMessage) (time.Time, bool) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return time.Time{}, false
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		if us, err := strconv.ParseInt(s, 10, 64); err == nil {
+			return time.Unix(0, us*int64(time.Microsecond)).UTC(), true
+		}
+	}
+	var n json.Number
+	if err := json.Unmarshal(raw, &n); err == nil {
+		if us, err := n.Int64(); err == nil {
+			return time.Unix(0, us*int64(time.Microsecond)).UTC(), true
+		}
+	}
+	return time.Time{}, false
 }
 
 func parseAuthLog(r io.Reader, cutoff, now time.Time, sec *models.HostSecurity) {
