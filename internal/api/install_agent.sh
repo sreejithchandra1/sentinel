@@ -100,7 +100,7 @@ if [ -n "$extra_groups" ]; then
   supp_line="SupplementaryGroups=${extra_groups}"
 fi
 
-# Shared sandbox: keep diagnose oneshot identical to the running agent.
+# Shared sandbox for the running agent.
 # Do not bind-mount /var/log/secure read-only — that makes setfacl fail with
 # "Read-only file system". ACL is applied by sentinel-agent-acl.service instead.
 unit_sandbox() {
@@ -145,29 +145,13 @@ $(unit_sandbox)
 WantedBy=multi-user.target
 EOF
 chmod 0644 "$UNIT_PATH"
-
-DIAG_PATH="/etc/systemd/system/sentinel-agent-diagnose.service"
-cat > "$DIAG_PATH" <<EOF
-[Unit]
-Description=Sentinel host agent auth-log diagnose
-After=network-online.target sentinel-agent-acl.service
-Wants=sentinel-agent-acl.service
-
-[Service]
-Type=oneshot
-User=${AGENT_USER}
-Group=${AGENT_USER}
-${supp_line}
-ExecStart=${BIN_PATH} -diagnose-auth
-$(unit_sandbox)
-EOF
-chmod 0644 "$DIAG_PATH"
+rm -f /etc/systemd/system/sentinel-agent-diagnose.service
 
 ACL_PATH="/etc/systemd/system/sentinel-agent-acl.service"
 cat > "$ACL_PATH" <<EOF
 [Unit]
 Description=ACL so sentinel-agent can read auth logs
-Before=sentinel-agent.service sentinel-agent-diagnose.service
+Before=sentinel-agent.service
 
 [Service]
 Type=oneshot
@@ -198,7 +182,3 @@ systemctl enable sentinel-agent.service
 # write a new ingest token and leave the old process 401ing.
 systemctl restart sentinel-agent.service
 echo "sentinel-agent installed and started as ${AGENT_USER}"
-echo "to test auth logs as ${AGENT_USER}:"
-echo "  sudo -u ${AGENT_USER} ${BIN_PATH} -diagnose-auth"
-echo "or (same systemd sandbox as the service):"
-echo "  systemctl start sentinel-agent-diagnose && journalctl -u sentinel-agent-diagnose -e --no-pager"
