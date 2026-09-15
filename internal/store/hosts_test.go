@@ -35,13 +35,27 @@ func TestHostCRUDAndEnroll(t *testing.T) {
 	if err := st.UpdateHostSnapshot(h.ID, "Ubuntu 20.04", "5.4.0", false, 86400,
 		[]models.HostDisk{{Mount: "/", Percent: 10}},
 		[]models.HostServiceStatus{{Name: "nginx", Active: "active"}},
-		&models.HostSecurity{LogsReadable: true},
+		&models.HostSecurity{LogsReadable: true, LastRootLogin: "2026-09-15T12:00:00Z"},
 	); err != nil {
 		t.Fatal(err)
 	}
 	got, err = st.GetHost(h.ID)
 	if err != nil || got == nil || got.UptimeSeconds != 86400 {
 		t.Fatalf("uptime after snapshot: %v %+v", err, got)
+	}
+	if got.Security == nil || got.Security.LastRootLogin != "2026-09-15T12:00:00Z" {
+		t.Fatalf("last root login: %+v", got.Security)
+	}
+	if err := st.UpdateHostSnapshot(h.ID, "Ubuntu 20.04", "5.4.0", false, 86400,
+		[]models.HostDisk{{Mount: "/", Percent: 10}},
+		[]models.HostServiceStatus{{Name: "nginx", Active: "active"}},
+		&models.HostSecurity{LogsReadable: true},
+	); err != nil {
+		t.Fatal(err)
+	}
+	got, err = st.GetHost(h.ID)
+	if err != nil || got.Security == nil || got.Security.LastRootLogin != "2026-09-15T12:00:00Z" {
+		t.Fatalf("last root login must stick: %+v", got.Security)
 	}
 	if len(got.ServiceStatus) != 1 || got.ServiceStatus[0].Name != "nginx" {
 		t.Fatalf("services: %+v", got.ServiceStatus)

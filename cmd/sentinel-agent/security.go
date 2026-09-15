@@ -28,8 +28,10 @@ var (
 		"SYSLOG_IDENTIFIER=su",
 		"SYSLOG_IDENTIFIER=login",
 		"+", "_COMM=sshd",
+		"+", "_COMM=sshd-session",
 		"+", "_COMM=sudo",
 		"+", "_SYSTEMD_UNIT=sshd.service",
+		"+", "SYSLOG_IDENTIFIER=cockpit-session",
 		"+", "SYSLOG_FACILITY=4",
 		"+", "SYSLOG_FACILITY=10",
 	}
@@ -82,7 +84,36 @@ func collectSecurityJournal(cutoff, now time.Time, sec *models.HostSecurity) boo
 	if len(out) > 0 {
 		parseJournalJSON(bytes.NewReader(out), cutoff, now, sec)
 	}
+	fillLastRootLogin(sec)
 	return true
+}
+
+func fillLastRootLogin(sec *models.HostSecurity) {
+	bin := journalctlPath()
+	if bin == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	out, _, err := runJournalctl(ctx, bin,
+		"--system", "--no-pager", "-o", "json", "-n", "200",
+		"--since", "30 days ago",
+		"--grep", `(?i)session opened for user root|accepted .+ for root`,
+	)
+	if err != nil && !journalctlNoEntries(err) {
+		return
+	}
+	if len(out) == 0 {
+		return
+	}
+	tmp := &models.HostSecurity{}
+	parseJournalJSON(bytes.NewReader(out), time.Time{}, time.Now().UTC(), tmp)
+	if tmp.LastRootLogin == "" {
+		return
+	}
+	if sec.LastRootLogin == "" || tmp.LastRootLogin > sec.LastRootLogin {
+		sec.LastRootLogin = tmp.LastRootLogin
+	}
 }
 
 func journalIsReadable(ctx context.Context, bin string) bool {
@@ -233,9 +264,15 @@ func classifyAuthLine(msg string, ts time.Time, sec *models.HostSecurity) {
 }
 
 func isRootLogin(lower string) bool {
-	if strings.Contains(lower, "accepted password for root") ||
-		strings.Contains(lower, "accepted publickey for root") ||
-		strings.Contains(lower, "session opened for user root") {
+	if strings.Contains(lower, "failed") || strings.Contains(lower, "invalid user") ||
+		strings.Contains(lower, "authentication failure") {
+		return false
+	}
+	if strings.Contains(lower, "session opened for user root") {
+		return true
+	}
+	// Alma/RHEL: "Accepted keyboard-interactive/pam for root from …"
+	if strings.Contains(lower, "accepted ") && strings.Contains(lower, " for root") {
 		return true
 	}
 	return false

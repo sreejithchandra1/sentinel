@@ -335,6 +335,9 @@ func (s *Store) UpdateHostSnapshot(id string, osVersion, kernel string, reboot b
 	}
 	secJSON := ""
 	if sec != nil {
+		if existing, err := s.GetHost(id); err == nil && existing != nil && existing.Security != nil {
+			sec = mergeHostSecurity(existing.Security, sec)
+		}
 		secJSON = marshalJSON(sec)
 	}
 	_, err := s.db.Exec(`
@@ -688,4 +691,19 @@ func unmarshalSecurity(s string) *models.HostSecurity {
 		return nil
 	}
 	return &out
+}
+
+func mergeHostSecurity(prev, next *models.HostSecurity) *models.HostSecurity {
+	if next == nil {
+		return prev
+	}
+	if prev == nil {
+		return next
+	}
+	if next.LastRootLogin == "" {
+		next.LastRootLogin = prev.LastRootLogin
+	} else if prev.LastRootLogin != "" && prev.LastRootLogin > next.LastRootLogin {
+		next.LastRootLogin = prev.LastRootLogin
+	}
+	return next
 }

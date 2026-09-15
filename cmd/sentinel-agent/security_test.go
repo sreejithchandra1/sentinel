@@ -31,6 +31,24 @@ func TestParseAuthLogCounts(t *testing.T) {
 	}
 }
 
+func TestIsRootLoginAlmaLines(t *testing.T) {
+	cases := []struct {
+		line string
+		want bool
+	}{
+		{"Accepted keyboard-interactive/pam for root from 10.0.0.1 port 22 ssh2", true},
+		{"pam_unix(sshd:session): session opened for user root(uid=0) by (uid=0)", true},
+		{"Accepted publickey for root from 10.0.0.1 port 22 ssh2", true},
+		{"Failed password for root from 1.2.3.4 port 22 ssh2", false},
+		{"Accepted publickey for alma from 10.0.0.1 port 22 ssh2", false},
+	}
+	for _, tc := range cases {
+		if got := isRootLogin(strings.ToLower(tc.line)); got != tc.want {
+			t.Fatalf("%q: got %v want %v", tc.line, got, tc.want)
+		}
+	}
+}
+
 func TestParseJournalJSON(t *testing.T) {
 	now := time.Date(2026, 9, 15, 7, 30, 0, 0, time.UTC)
 	cutoff := now.Add(-5 * time.Minute)
