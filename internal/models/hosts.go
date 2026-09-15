@@ -27,14 +27,17 @@ const (
 	DefaultHostAuthFailLimit   = 50
 	HostAuthFailWindow         = 5 * time.Minute
 	HostEnrollTTL              = 15 * time.Minute
-	HostAgentVersion           = "1.1.8"
+	HostAgentVersion           = "1.1.9"
 	MaxHostWatchedServices     = 32
 	MaxHostDiskMounts          = 24
 )
 
 type HostDisk struct {
-	Mount   string  `json:"mount"`
-	Percent float64 `json:"percent"`
+	Mount      string  `json:"mount"`
+	Percent    float64 `json:"percent"`
+	TotalBytes uint64  `json:"total_bytes,omitempty"`
+	UsedBytes  uint64  `json:"used_bytes"`
+	FreeBytes  uint64  `json:"free_bytes"`
 }
 
 type HostServiceStatus struct {

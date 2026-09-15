@@ -295,8 +295,16 @@ func disks() []models.HostDisk {
 			used = 0
 		}
 		pct := clampPct(used * 100)
+		bsize := fsBlockSize(st)
+		total, usedBytes, free := diskBytes(st.Blocks, fsBavail(st), bsize)
 		seen[mount] = true
-		out = append(out, models.HostDisk{Mount: mount, Percent: pct})
+		out = append(out, models.HostDisk{
+			Mount:      mount,
+			Percent:    pct,
+			TotalBytes: total,
+			UsedBytes:  usedBytes,
+			FreeBytes:  free,
+		})
 		if len(out) >= models.MaxHostDiskMounts {
 			break
 		}

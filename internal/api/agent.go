@@ -241,7 +241,13 @@ func hostSampleFromPayload(h *models.Host, p *models.HostIngestPayload, now time
 			if pct > 100 {
 				pct = 100
 			}
-			disks = append(disks, models.HostDisk{Mount: mount, Percent: pct})
+			disks = append(disks, models.HostDisk{
+				Mount:      mount,
+				Percent:    pct,
+				TotalBytes: clampDiskBytes(d.TotalBytes),
+				UsedBytes:  clampDiskBytes(d.UsedBytes),
+				FreeBytes:  clampDiskBytes(d.FreeBytes),
+			})
 			if pct > worst {
 				worst = pct
 			}
@@ -255,6 +261,15 @@ func hostSampleFromPayload(h *models.Host, p *models.HostIngestPayload, now time
 		}
 	}
 	return sample
+}
+
+const maxHostDiskBytes = 1 << 50 // 1 PiB
+
+func clampDiskBytes(n uint64) uint64 {
+	if n > maxHostDiskBytes {
+		return 0
+	}
+	return n
 }
 
 func bearerToken(r *http.Request) string {

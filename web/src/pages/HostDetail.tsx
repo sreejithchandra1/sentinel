@@ -15,6 +15,7 @@ import { useAuth } from '../context/AuthContext'
 import { chartGridStroke, chartTick, chartTooltipLabel, chartTooltipStyle } from '../chartTheme'
 import { colors, fonts } from '../theme'
 import { formatDuration } from '../utils/duration'
+import { formatBytes } from '../utils/bytes'
 import { useAdaptivePoll } from '../utils/poll'
 
 type Tab = 'overview' | 'performance' | 'storage' | 'security' | 'services' | 'alerts'
@@ -72,6 +73,16 @@ function bandAccent(b: Band): 'green' | 'yellow' | 'red' {
   if (b === 'Critical') return 'red'
   if (b === 'Warning') return 'yellow'
   return 'green'
+}
+
+function worstDisk(disks: HostDisk[]): HostDisk | undefined {
+  if (disks.length === 0) return undefined
+  return disks.slice().sort((a, b) => b.percent - a.percent)[0]
+}
+
+function diskSizeHint(d?: HostDisk): string {
+  if (!d?.total_bytes) return ''
+  return `${formatBytes(d.free_bytes)} free of ${formatBytes(d.total_bytes)}`
 }
 
 function serviceOk(active?: string): boolean {
@@ -246,11 +257,13 @@ export default function HostDetail() {
   })
   const disks: HostDisk[] = (host.disks && host.disks.length > 0) ? host.disks : (latest?.disks || [])
   const health = hostHealth(host, latest, ncpu)
-  const kpis: { label: string; value: string; band: Band }[] = [
+  const worst = worstDisk(disks)
+  const diskHint = diskSizeHint(worst)
+  const kpis: { label: string; value: string; band: Band; hint?: string }[] = [
     { label: 'CPU', value: `${fmt(latest?.cpu_percent)}%`, band: metricBand(latest?.cpu_percent, host.alert_cpu_warning || 80, host.alert_cpu_threshold || 90) },
     { label: 'Memory', value: `${fmt(latest?.mem_percent)}%`, band: metricBand(latest?.mem_percent, host.alert_memory_warning || 80, host.alert_memory_threshold || 90) },
     { label: 'Swap', value: `${fmt(latest?.swap_percent)}%`, band: metricBand(latest?.swap_percent, host.alert_swap_warning || 80, host.alert_swap_threshold || 90) },
-    { label: 'Disk', value: `${fmt(latest?.disk_percent)}%`, band: metricBand(latest?.disk_percent, host.alert_disk_warning || 80, host.alert_disk_threshold || 90) },
+    { label: 'Disk', value: `${fmt(latest?.disk_percent)}%`, band: metricBand(latest?.disk_percent, host.alert_disk_warning || 80, host.alert_disk_threshold || 90), hint: diskHint || undefined },
     { label: 'Load', value: `${fmt(loadPct)}%`, band: metricBand(loadPct, host.alert_load_warning || 80, loadCrit) },
     { label: 'I/O Wait', value: `${fmt(latest?.iowait_percent)}%`, band: metricBand(latest?.iowait_percent, host.alert_iowait_warning || 80, host.alert_iowait_threshold || 90) },
   ]
@@ -331,7 +344,7 @@ export default function HostDetail() {
 
       <div className="grid-6" style={{ marginBottom: 16 }}>
         {kpis.map(k => (
-          <MetricCard key={k.label} label={k.label} value={k.value} sub={k.band} accent={bandAccent(k.band)} />
+          <MetricCard key={k.label} label={k.label} value={k.value} sub={k.hint ? `${k.band} · ${k.hint}` : k.band} accent={bandAccent(k.band)} />
         ))}
       </div>
 
@@ -485,23 +498,42 @@ function StorageTab({ host, disks, chartData }: { host: Host; disks: HostDisk[];
         {disks.length === 0 ? (
           <div style={styles.empty}>Waiting for samples…</div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {disks.slice().sort((a, b) => b.percent - a.percent).map(d => (
-              <div key={d.mount} style={{ display: 'grid', gridTemplateColumns: 'minmax(72px, 120px) 1fr auto', gap: 12, alignItems: 'center' }}>
-                <code style={{ fontSize: 13, color: colors.text }}>{d.mount}</code>
-                <div style={styles.barTrack}>
-                  <div style={{
-                    ...styles.barFill,
-                    width: `${Math.min(100, d.percent)}%`,
-                    background: usageColor(d.percent, host.alert_disk_warning, host.alert_disk_threshold),
-                  }} />
+              <div key={d.mount}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(72px, 140px) 1fr auto', gap: 12, alignItems: 'center' }}>
+                  <code style={{ fontSize: 13, color: colors.text }}>{d.mount}</code>
+                  <div style={styles.barTrack}>
+                    <div style={{
+                      ...styles.barFill,
+                      width: `${Math.min(100, d.percent)}%`,
+                      background: usageColor(d.percent, host.alert_disk_warning, host.alert_disk_threshold),
+                    }} />
+                  </div>
+                  <span style={{
+                    fontWeight: 600,
+                    fontVariantNumeric: 'tabular-nums',
+                    fontFamily: fonts.mono,
+                    color: usageColor(d.percent, host.alert_disk_warning, host.alert_disk_threshold),
+                  }}>{fmt(d.percent)}%</span>
                 </div>
-                <span style={{
-                  fontWeight: 600,
-                  fontVariantNumeric: 'tabular-nums',
-                  fontFamily: fonts.mono,
-                  color: usageColor(d.percent, host.alert_disk_warning, host.alert_disk_threshold),
-                }}>{fmt(d.percent)}%</span>
+                {d.total_bytes ? (
+                  <div style={{
+                    marginLeft: 0,
+                    marginTop: 6,
+                    display: 'grid',
+                    gridTemplateColumns: 'minmax(72px, 140px) 1fr',
+                    gap: 12,
+                    fontSize: 12,
+                    color: colors.textMuted,
+                    fontVariantNumeric: 'tabular-nums',
+                  }}>
+                    <span />
+                    <span>
+                      {formatBytes(d.used_bytes)} used · {formatBytes(d.free_bytes)} free · {formatBytes(d.total_bytes)} total
+                    </span>
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>

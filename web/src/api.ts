@@ -360,6 +360,9 @@ export type HostStatus = 'pending' | 'online' | 'offline'
 export interface HostDisk {
   mount: string
   percent: number
+  total_bytes?: number
+  used_bytes?: number
+  free_bytes?: number
 }
 
 export interface HostServiceStatus {
