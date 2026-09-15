@@ -241,15 +241,7 @@ func (s *Server) completeLogin(w http.ResponseWriter, r *http.Request, user *mod
 		return err
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     "sentinel_session",
-		Value:    sessionID,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   cookieSecure(r, s.dashboardBaseURL()),
-		SameSite: http.SameSiteLaxMode,
-		Expires:  expires,
-	})
+	http.SetCookie(w, sessionCookie(sessionID, expires))
 	return nil
 }
 
@@ -257,15 +249,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie("sentinel_session"); err == nil {
 		_ = s.store.DeleteSession(cookie.Value)
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     "sentinel_session",
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   cookieSecure(r, s.dashboardBaseURL()),
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   -1,
-	})
+	http.SetCookie(w, clearSessionCookie())
 	jsonOK(w, map[string]bool{"ok": true})
 }
 

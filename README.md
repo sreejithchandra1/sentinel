@@ -42,7 +42,7 @@ Open http://localhost:8082 — default login: `admin` / `changeme`
 
 ## Build from Source
 
-Requirements: Go 1.22+, Node.js 20+, GCC (for SQLite)
+Requirements: Go 1.25.9+, Node.js 20+, GCC (for SQLite)
 
 ```bash
 make build

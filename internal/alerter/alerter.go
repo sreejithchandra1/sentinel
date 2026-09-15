@@ -486,7 +486,7 @@ func formatFromHeader(from string) string {
 func (a *Alerter) tlsConfig() *tls.Config {
 	return &tls.Config{
 		ServerName: a.cfg.Host,
-		MinVersion: tls.VersionTLS12,
+		MinVersion: tls.VersionTLS13,
 	}
 }
 

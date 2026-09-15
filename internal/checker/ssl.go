@@ -49,7 +49,10 @@ func (c *Checker) probeSSL(ctx context.Context, m *models.Monitor) *models.Check
 		return result
 	}
 	_ = raw.SetDeadline(time.Now().Add(timeout))
-	conn := tls.Client(raw, &tls.Config{ServerName: host})
+	conn := tls.Client(raw, &tls.Config{
+		ServerName: host,
+		MinVersion: tls.VersionTLS13,
+	})
 	if err := conn.HandshakeContext(ctx); err != nil {
 		_ = raw.Close()
 		result.ResponseTimeMs = int(time.Since(start).Milliseconds())
