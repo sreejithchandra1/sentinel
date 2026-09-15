@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDescribeAuthFile(t *testing.T) {
@@ -36,6 +37,23 @@ func TestClassifyTagAlmaLines(t *testing.T) {
 	for _, tc := range cases {
 		if got := classifyTag(tc.msg); got != tc.want {
 			t.Fatalf("%q: got %s want %s", tc.msg, got, tc.want)
+		}
+	}
+}
+
+func TestJournalSinceAndQueryArgs(t *testing.T) {
+	ts := time.Date(2026, 9, 15, 10, 47, 57, 0, time.UTC)
+	if got := journalSince(ts); got != "2026-09-15 10:47:57 UTC" {
+		t.Fatalf("journalSince=%q", got)
+	}
+	args := journalAuthQueryArgs(ts, 20)
+	joined := strings.Join(args, "\x00")
+	if strings.Contains(joined, "2026-09-15T") || strings.Contains(joined, "T10:47:57Z") {
+		t.Fatalf("RFC3339 timestamp leaked into journalctl args: %q", args)
+	}
+	for _, a := range args {
+		if a == "+" {
+			t.Fatal("lone + journal match must not be passed")
 		}
 	}
 }

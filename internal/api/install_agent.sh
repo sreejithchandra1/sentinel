@@ -80,8 +80,8 @@ add_grp() {
 add_grp adm
 add_grp systemd-journal
 if [ -n "$extra_groups" ]; then
-  # shellcheck disable=SC2086
-  usermod -aG $extra_groups "$AGENT_USER" >/dev/null 2>&1 || true
+  grp_csv="$(echo "$extra_groups" | tr ' ' ',')"
+  usermod -aG "$grp_csv" "$AGENT_USER" || echo "warning: usermod -aG ${grp_csv} failed" >&2
 fi
 
 install -o root -g root -m 0755 "${tmp}/sentinel-agent" "$BIN_PATH"
@@ -101,6 +101,8 @@ if [ -n "$extra_groups" ]; then
 fi
 
 # Shared sandbox: keep diagnose oneshot identical to the running agent.
+# Do not bind-mount /var/log/secure read-only — that makes setfacl fail with
+# "Read-only file system". ACL is applied by sentinel-agent-acl.service instead.
 unit_sandbox() {
   cat <<EOF
 NoNewPrivileges=true
@@ -119,17 +121,15 @@ CapabilityBoundingSet=
 AmbientCapabilities=
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 SystemCallArchitectures=native
-BindReadOnlyPaths=-/var/log/journal -/run/log/journal -/run/systemd/journal -/var/log/secure -/var/log/auth.log
-ExecStartPre=-+/usr/bin/setfacl -m u:${AGENT_USER}:r /var/log/secure
-ExecStartPre=-+/usr/bin/setfacl -m u:${AGENT_USER}:r /var/log/auth.log
+BindReadOnlyPaths=-/var/log/journal -/run/log/journal -/run/systemd/journal
 EOF
 }
 
 cat > "$UNIT_PATH" <<EOF
 [Unit]
 Description=Sentinel host agent
-After=network-online.target
-Wants=network-online.target
+After=network-online.target sentinel-agent-acl.service
+Wants=network-online.target sentinel-agent-acl.service
 
 [Service]
 Type=simple
@@ -150,7 +150,8 @@ DIAG_PATH="/etc/systemd/system/sentinel-agent-diagnose.service"
 cat > "$DIAG_PATH" <<EOF
 [Unit]
 Description=Sentinel host agent auth-log diagnose
-After=network-online.target
+After=network-online.target sentinel-agent-acl.service
+Wants=sentinel-agent-acl.service
 
 [Service]
 Type=oneshot
@@ -162,7 +163,36 @@ $(unit_sandbox)
 EOF
 chmod 0644 "$DIAG_PATH"
 
+ACL_PATH="/etc/systemd/system/sentinel-agent-acl.service"
+cat > "$ACL_PATH" <<EOF
+[Unit]
+Description=ACL so sentinel-agent can read auth logs
+Before=sentinel-agent.service sentinel-agent-diagnose.service
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/bin/setfacl -m u:${AGENT_USER}:r /var/log/secure
+ExecStart=-/usr/bin/setfacl -m u:${AGENT_USER}:r /var/log/auth.log
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+chmod 0644 "$ACL_PATH"
+
+if [ -d /etc/cron.hourly ]; then
+  cat > /etc/cron.hourly/sentinel-agent-acl <<EOF
+#!/bin/sh
+# Re-apply after logrotate recreates 0600 auth logs.
+[ -f /var/log/secure ] && /usr/bin/setfacl -m u:${AGENT_USER}:r /var/log/secure 2>/dev/null || true
+[ -f /var/log/auth.log ] && /usr/bin/setfacl -m u:${AGENT_USER}:r /var/log/auth.log 2>/dev/null || true
+EOF
+  chmod 0755 /etc/cron.hourly/sentinel-agent-acl
+fi
+
 systemctl daemon-reload
+systemctl enable sentinel-agent-acl.service
+systemctl start sentinel-agent-acl.service || true
 systemctl enable sentinel-agent.service
 # enable --now does not restart an already-running unit, so a re-install would
 # write a new ingest token and leave the old process 401ing.

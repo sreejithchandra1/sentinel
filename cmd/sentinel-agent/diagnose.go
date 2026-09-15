@@ -88,19 +88,17 @@ func printJournalMatches(since, now time.Time, limit int) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	args := []string{
-		"--system", "--no-pager", "-o", "json",
-		"-n", fmt.Sprintf("%d", limit),
-		"--since", since.UTC().Format(time.RFC3339),
-	}
-	args = append(args, journalctlArgsOR...)
+	args := journalAuthQueryArgs(since, limit)
 	out, stderr, err := runJournalctl(ctx, bin, args...)
+	if strings.TrimSpace(stderr) != "" {
+		fmt.Printf("journalctl stderr: %s\n", strings.TrimSpace(stderr))
+	}
 	if journalPermissionDenied(err, stderr) {
-		fmt.Printf("journal matches: permission denied: %s\n", strings.TrimSpace(stderr))
+		fmt.Printf("journal matches: permission denied (err=%v)\n", err)
 		return
 	}
 	if err != nil && !journalctlNoEntries(err) && len(out) == 0 {
-		fmt.Printf("journal matches: err=%v stderr=%s\n", err, strings.TrimSpace(stderr))
+		fmt.Printf("journal matches: err=%v\n", err)
 		return
 	}
 	if len(out) == 0 {

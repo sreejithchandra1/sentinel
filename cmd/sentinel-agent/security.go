@@ -19,24 +19,12 @@ import (
 )
 
 var (
-	authLogPaths     = []string{"/var/log/auth.log", "/var/log/secure"}
-	journalFailOnce  sync.Once
-	journalctlArgsOR = []string{
-		"SYSLOG_IDENTIFIER=sshd",
-		"SYSLOG_IDENTIFIER=sshd-session",
-		"SYSLOG_IDENTIFIER=sudo",
-		"SYSLOG_IDENTIFIER=su",
-		"SYSLOG_IDENTIFIER=login",
-		"SYSLOG_IDENTIFIER=unix_chkpwd",
-		"+", "_COMM=sshd",
-		"+", "_COMM=sshd-session",
-		"+", "_COMM=sudo",
-		"+", "_COMM=unix_chkpwd",
-		"+", "_SYSTEMD_UNIT=sshd.service",
-		"+", "SYSLOG_IDENTIFIER=cockpit-session",
-		"+", "SYSLOG_FACILITY=4",
-		"+", "SYSLOG_FACILITY=10",
-	}
+	authLogPaths    = []string{"/var/log/auth.log", "/var/log/secure"}
+	journalFailOnce sync.Once
+	// Same style as fillLastRootLogin, which already works on Alma: relative/ISO
+	// timestamps that systemd 239+ parse, plus --grep. RFC3339 "...Z" and a lone
+	// "+" match argument both produced zero hits on RHEL journalctl.
+	journalAuthGrep = `(?i)failed password|failed publickey|invalid user|authentication failure|password check failed|not in sudoers|incorrect password|connection closed by|session opened for user root|accepted .+ for root|failed keyboard-interactive|failed none for|may not run sudo|not allowed to run sudo`
 )
 
 func collectSecurity(now time.Time, window time.Duration) *models.HostSecurity {
@@ -89,21 +77,38 @@ func collectSecurityJournal(cutoff, now time.Time, sec *models.HostSecurity) boo
 		return false
 	}
 
-	args := []string{
-		"--system", "--no-pager", "-o", "json", "-n", "5000",
-		"--since", cutoff.UTC().Format(time.RFC3339),
-	}
-	args = append(args, journalctlArgsOR...)
+	args := journalAuthQueryArgs(cutoff, 5000)
 	out, stderr, err := runJournalctl(ctx, bin, args...)
 	if journalPermissionDenied(err, stderr) {
 		journalFailOnce.Do(func() { log.Printf("security: journal permission denied: %s", strings.TrimSpace(stderr)) })
 		return false
+	}
+	if journalctlBadSince(stderr) {
+		journalFailOnce.Do(func() { log.Printf("security: journalctl --since: %s", strings.TrimSpace(stderr)) })
 	}
 	if len(out) > 0 {
 		parseJournalJSON(bytes.NewReader(out), cutoff, now, sec)
 	}
 	fillLastRootLogin(sec)
 	return true
+}
+
+func journalAuthQueryArgs(since time.Time, lines int) []string {
+	return []string{
+		"--system", "--no-pager", "-o", "json",
+		"-n", strconv.Itoa(lines),
+		"--since", journalSince(since),
+		"--grep", journalAuthGrep,
+	}
+}
+
+func journalSince(t time.Time) string {
+	return t.UTC().Format("2006-01-02 15:04:05 UTC")
+}
+
+func journalctlBadSince(stderr string) bool {
+	s := strings.ToLower(stderr)
+	return strings.Contains(s, "failed to parse") || strings.Contains(s, "invalid timestamp")
 }
 
 func fillLastRootLogin(sec *models.HostSecurity) {
