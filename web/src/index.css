@@ -604,6 +604,30 @@ input:focus, select:focus, textarea:focus, button:focus-visible {
   white-space: nowrap;
 }
 
+.page-title-input {
+  display: block;
+  width: min(100%, 28rem);
+  min-width: 8rem;
+  font: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 2px 8px;
+  margin: -2px -8px 0;
+}
+
+.page-title-input:hover,
+.page-title-input:focus {
+  border-color: var(--border);
+  background: var(--elevated);
+  outline: none;
+}
+
 .page-subtitle {
   color: var(--muted);
   margin: 0;

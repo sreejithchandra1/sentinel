@@ -8,6 +8,7 @@ export default function ConfirmDialog({
   message,
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
+  hideCancel = false,
   danger = false,
   busy = false,
   onConfirm,
@@ -18,6 +19,7 @@ export default function ConfirmDialog({
   message: string
   confirmLabel?: string
   cancelLabel?: string
+  hideCancel?: boolean
   danger?: boolean
   busy?: boolean
   onConfirm: () => void
@@ -55,14 +57,16 @@ export default function ConfirmDialog({
         </div>
         <p id="confirm-dialog-message" style={styles.message}>{message}</p>
         <div style={styles.actions}>
-          <button
-            type="button"
-            className="btn"
-            disabled={busy}
-            onClick={onCancel}
-          >
-            {cancelLabel}
-          </button>
+          {!hideCancel && (
+            <button
+              type="button"
+              className="btn"
+              disabled={busy}
+              onClick={onCancel}
+            >
+              {cancelLabel}
+            </button>
+          )}
           <button
             type="button"
             className={danger ? 'btn btn-danger' : 'btn btn-primary'}

@@ -121,6 +121,9 @@ func (s *Server) handleUpdateHost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	existing.Name = strings.TrimSpace(patch.Name)
+	if len(existing.Name) > models.MaxHostNameLen {
+		existing.Name = strings.TrimSpace(existing.Name[:models.MaxHostNameLen])
+	}
 	if existing.Name == "" {
 		existing.Name = existing.DisplayName()
 	}

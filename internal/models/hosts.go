@@ -30,6 +30,7 @@ const (
 	HostAgentVersion           = "1.1.9"
 	MaxHostWatchedServices     = 32
 	MaxHostDiskMounts          = 24
+	MaxHostNameLen             = 80
 )
 
 type HostDisk struct {

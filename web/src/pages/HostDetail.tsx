@@ -150,13 +150,17 @@ export default function HostDetail() {
   const [period, setPeriod] = useState('24h')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [saveNotice, setSaveNotice] = useState(false)
+  const [foldNonce, setFoldNonce] = useState(0)
   const [toggling, setToggling] = useState(false)
   const [command, setCommand] = useState('')
   const [copied, setCopied] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [servicesText, setServicesText] = useState('')
+  const [nameDraft, setNameDraft] = useState('')
   const servicesHostId = useRef('')
+  const nameEditing = useRef(false)
 
   const load = useCallback(async () => {
     if (!id) return null
@@ -166,6 +170,9 @@ export default function HostDetail() {
       api.incidents({ monitorId: id, limit: 50, offset: 0 }).catch(() => ({ items: [] as Incident[] })),
     ])
     setHost(h)
+    if (!nameEditing.current) {
+      setNameDraft(h.name || '')
+    }
     setStats(s)
     setIncidents(inc.items || [])
     if (servicesHostId.current !== h.id) {
@@ -209,9 +216,13 @@ export default function HostDetail() {
     setError('')
     try {
       const services = servicesText.split('\n').map(s => s.trim()).filter(Boolean)
-      const updated = await api.updateHost(host.id, { ...host, services })
+      const name = nameDraft.trim() || host.name
+      const updated = await api.updateHost(host.id, { ...host, services, name })
       setHost(updated)
+      setNameDraft(updated.name || '')
       setServicesText((updated.services || []).join('\n'))
+      setFoldNonce(n => n + 1)
+      setSaveNotice(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed')
     } finally {
@@ -228,6 +239,24 @@ export default function HostDetail() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Delete failed')
       setDeleting(false)
+    }
+  }
+
+  async function commitName() {
+    nameEditing.current = false
+    if (!host) return
+    const next = nameDraft.trim() || host.hostname || 'New host'
+    if (next === (host.name || '').trim()) {
+      setNameDraft(host.name || next)
+      return
+    }
+    try {
+      const updated = await api.updateHost(host.id, { ...host, name: next })
+      setHost(updated)
+      setNameDraft(updated.name || next)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not rename host')
+      setNameDraft(host.name || '')
     }
   }
 
@@ -279,8 +308,38 @@ export default function HostDetail() {
         onConfirm={confirmDelete}
         onCancel={() => { if (!deleting) setDeleteOpen(false) }}
       />
+      <ConfirmDialog
+        open={saveNotice}
+        title="Monitoring saved"
+        message="Alert rules for this host are in effect. The next agent check-in will use these settings."
+        confirmLabel="Done"
+        hideCancel
+        onConfirm={() => setSaveNotice(false)}
+        onCancel={() => setSaveNotice(false)}
+      />
       <PageHeader
-        title={host.name || 'New host'}
+        title={
+          isAdmin ? (
+            <input
+              className="page-title-input"
+              value={nameDraft}
+              maxLength={80}
+              aria-label="Host name"
+              title="Display name (hostname is reported by the agent)"
+              onFocus={() => { nameEditing.current = true }}
+              onChange={e => setNameDraft(e.target.value)}
+              onBlur={() => { void commitName() }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') e.currentTarget.blur()
+                if (e.key === 'Escape') {
+                  setNameDraft(host.name || '')
+                  nameEditing.current = false
+                  e.currentTarget.blur()
+                }
+              }}
+            />
+          ) : (host.name || 'New host')
+        }
         badges={<StatusBadge status={hostBadge(host)} />}
         subtitle={<Link to="/hosts" style={styles.back}>← Hosts</Link>}
         actions={
@@ -391,6 +450,7 @@ export default function HostDetail() {
           {tab === 'alerts' && (
             isAdmin ? (
               <AlertRulesTab
+                key={foldNonce}
                 host={host}
                 setHostField={setHostField}
                 servicesText={servicesText}
@@ -407,6 +467,32 @@ export default function HostDetail() {
         <aside className="host-side" aria-label="Host information">
           <Panel style={{ marginBottom: 0 }}>
             <h3 className="panel-title">Host Information</h3>
+            {isAdmin ? (
+              <label className="field" style={{ margin: '0 0 4px' }}>
+                <span className="field-label">Name</span>
+                <input
+                  className="input"
+                  value={nameDraft}
+                  maxLength={80}
+                  onFocus={() => { nameEditing.current = true }}
+                  onChange={e => setNameDraft(e.target.value)}
+                  onBlur={() => { void commitName() }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') e.currentTarget.blur()
+                    if (e.key === 'Escape') {
+                      setNameDraft(host.name || '')
+                      nameEditing.current = false
+                      e.currentTarget.blur()
+                    }
+                  }}
+                />
+                <span style={{ fontSize: 12, color: colors.textMuted, marginTop: 4, display: 'block' }}>
+                  Display name in Sentinel. Hostname is reported by the agent.
+                </span>
+              </label>
+            ) : (
+              <InfoRow label="Name" value={host.name || '—'} />
+            )}
             <InfoRow label="Hostname" value={host.hostname || '—'} />
             <InfoRow label="OS" value={host.os_version || host.os || '—'} />
             <InfoRow label="Kernel" value={host.kernel_version || '—'} />
