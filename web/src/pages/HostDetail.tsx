@@ -528,10 +528,6 @@ function SecurityTab({ host }: { host: Host }) {
             Auth logs are not readable (need systemd-journal on Alma/RHEL, or adm on Debian). On the host, as root: sudo -u sentinel-agent /usr/local/bin/sentinel-agent -diagnose-auth
           </p>
         )}
-        <InfoRow label="Auth log source" value={sec?.log_source || (sec?.logs_readable ? '—' : 'none')} />
-        {sec?.log_error ? (
-          <InfoRow label="Auth log notes" value={sec.log_error} color={colors.yellow} />
-        ) : null}
         <InfoRow label="Reboot required" value={host.reboot_required ? 'Yes' : 'No'} color={host.reboot_required ? colors.red : undefined} />
         <InfoRow label="sudo failures (5m)" value={sec ? String(sec.sudo_failed_5m) : '—'} />
         <InfoRow label="Last root login" value={sec?.last_root_login ? new Date(sec.last_root_login).toLocaleString() : '—'} />
