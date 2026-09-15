@@ -5,7 +5,7 @@ import {
 } from 'recharts'
 import { api, Host, HostDisk, HostStats, Incident } from '../api'
 import ConfirmDialog from '../components/ConfirmDialog'
-import IncidentStatus, { incidentLifecycleLabel } from '../components/IncidentStatus'
+import IncidentStatus, { incidentLifecycleLabel, incidentStatusLabel } from '../components/IncidentStatus'
 import MetricCard from '../components/MetricCard'
 import PageHeader from '../components/PageHeader'
 import Panel from '../components/Panel'
@@ -616,7 +616,7 @@ function IncidentTimeline({ incidents }: { incidents: Incident[] }) {
             const open = !inc.resolved_at
             return (
               <li key={inc.id}>
-                <span className="host-timeline-dot" style={{ background: open ? colors.red : colors.green }} />
+                <span className="host-timeline-dot" style={{ background: open ? (incidentStatusLabel(inc) === 'Warning' ? colors.yellow : colors.red) : colors.green }} />
                 <div>
                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                     <Link to={`/incidents/${inc.id}`} style={{ color: colors.text, fontWeight: 600, textDecoration: 'none' }}>

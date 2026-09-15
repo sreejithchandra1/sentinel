@@ -132,6 +132,92 @@ func TestBuildSlackPayloadHostServices(t *testing.T) {
 	}
 }
 
+func TestAlertMetaHostDiskWarningVsCritical(t *testing.T) {
+	warn := AlertMeta{
+		Event:    "HOST_DISK",
+		Message:  "Disk warning: 83.0% (warning 80.0 / critical 90.0) for 20 consecutive samples",
+		Severity: "warning",
+	}
+	if warn.Title() != "HOST DISK WARNING" {
+		t.Fatalf("warning title=%q", warn.Title())
+	}
+	if warn.StatusLabel() != "WARNING" {
+		t.Fatalf("warning status=%q", warn.StatusLabel())
+	}
+	if warn.Color() != alertColorWarning {
+		t.Fatalf("warning color=%q", warn.Color())
+	}
+
+	crit := AlertMeta{
+		Event:    "HOST_DISK",
+		Message:  "Disk critical: 93.0% (warning 80.0 / critical 90.0) for 20 consecutive samples",
+		Severity: "critical",
+	}
+	if crit.Title() != "HOST DISK HIGH" {
+		t.Fatalf("critical title=%q", crit.Title())
+	}
+	if crit.StatusLabel() != "HIGH" {
+		t.Fatalf("critical status=%q", crit.StatusLabel())
+	}
+	if crit.Color() != alertColorDanger {
+		t.Fatalf("critical color=%q", crit.Color())
+	}
+
+	inferred := AlertMeta{
+		Event:   "HOST_DISK",
+		Message: "Disk warning: 83.0% (warning 80.0 / critical 90.0) for 20 consecutive samples [/ 83%]",
+	}
+	if inferred.Title() != "HOST DISK WARNING" || inferred.StatusLabel() != "WARNING" {
+		t.Fatalf("inferred warning title=%q status=%q", inferred.Title(), inferred.StatusLabel())
+	}
+}
+
+func TestRenderAlertEmailHostDiskWarning(t *testing.T) {
+	a := &Alerter{}
+	html := a.renderAlertEmail(AlertMeta{
+		Event:        "HOST_DISK",
+		Name:         "internal",
+		URL:          "internal.buildsite.in",
+		Message:      "Disk warning: 83.0% (warning 80.0 / critical 90.0) for 20 consecutive samples",
+		DashboardURL: "http://localhost/hosts/1",
+		IncidentID:   "b7c704c7",
+		EventAt:      time.Date(2026, 9, 15, 5, 58, 0, 0, time.UTC),
+		Severity:     "warning",
+	})
+	for _, want := range []string{"HOST DISK WARNING", "WARNING", alertColorWarning, "internal"} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("missing %q in email html", want)
+		}
+	}
+	if strings.Contains(html, "HOST DISK HIGH") {
+		t.Fatal("warning email should not use HOST DISK HIGH")
+	}
+}
+
+func TestBuildSlackPayloadHostDiskWarning(t *testing.T) {
+	raw, err := buildSlackPayload(AlertMeta{
+		Event:    "HOST_DISK",
+		Name:     "internal",
+		Message:  "Disk warning: 83.0% (warning 80.0 / critical 90.0)",
+		Severity: "warning",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	if !strings.Contains(s, "HOST DISK WARNING") || !strings.Contains(s, "WARNING") || !strings.Contains(s, ":large_yellow_circle:") {
+		t.Fatalf("slack warning payload=%s", s)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatal(err)
+	}
+	att := payload["attachments"].([]any)[0].(map[string]any)
+	if att["color"] != alertColorWarning {
+		t.Fatalf("color=%v", att["color"])
+	}
+}
+
 func TestRenderAlertEmail(t *testing.T) {
 	a := &Alerter{}
 	html := a.renderAlertEmail(AlertMeta{

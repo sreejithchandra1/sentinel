@@ -349,9 +349,11 @@ func (a *Alerter) evalHostGauge(
 			log.Printf("alerter: host %s %s alert pending: %d/%d (value=%.1f warning=%.1f critical=%.1f)", h.DisplayName(), metric, state.ConsecutiveHigh, after, value, warning, critical)
 			return nil
 		}
+		severity := "warning"
 		msg := fmt.Sprintf("%s warning: %.1f%s (warning %.1f / critical %.1f) for %d consecutive samples%s",
 			label, value, unit, warning, critical, state.ConsecutiveHigh, extra)
 		if value >= critical {
+			severity = "critical"
 			msg = fmt.Sprintf("%s critical: %.1f%s (warning %.1f / critical %.1f) for %d consecutive samples%s",
 				label, value, unit, warning, critical, state.ConsecutiveHigh, extra)
 		}
@@ -369,6 +371,7 @@ func (a *Alerter) evalHostGauge(
 			Message:    msg,
 			IncidentID: inc.ID,
 			EventAt:    sample.CollectedAt,
+			Severity:   severity,
 		})
 	case value < recoverBelow:
 		state.ConsecutiveOK++

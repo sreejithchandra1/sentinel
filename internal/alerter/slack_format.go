@@ -12,7 +12,7 @@ func buildSlackPayload(meta AlertMeta) ([]byte, error) {
 	switch meta.StatusLabel() {
 	case "UP", "OK":
 		statusEmoji = ":large_green_circle:"
-	case "SLOW":
+	case "SLOW", "WARNING":
 		statusEmoji = ":large_yellow_circle:"
 	}
 

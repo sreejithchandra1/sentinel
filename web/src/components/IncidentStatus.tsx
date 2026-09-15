@@ -16,36 +16,9 @@ export function incidentLifecycleLabel(incident: Incident): string {
   return 'Open'
 }
 
-/** Status label for incident rows — cert/DNS changes are notices, not downtime. */
-export default function IncidentStatus({ incident }: { incident: Incident }) {
-  const type = (incident.type || '').toLowerCase()
-
-  if (type === 'cert_change' || type === 'dns_change') {
-    return <span style={styles.notice}>Notice</span>
-  }
-
-  if (incident.resolved_at) {
-    return <span style={styles.resolved}>Resolved</span>
-  }
-
-  if (incident.acknowledged_at) {
-    return <span style={styles.acked}>Acknowledged</span>
-  }
-
-  if (type === 'ssl_expiry' || type === 'slow' || (type.startsWith('host_') && type !== 'host_offline')) {
-    if (type === 'ssl_expiry') {
-      const days = sslExpiryDays(incident.message)
-      if (days != null && days <= 7) {
-        return <span style={styles.critical}>Critical</span>
-      }
-    }
-    if (type === 'host_root_login' || type === 'host_auth' || type === 'host_service' || (incident.message || '').toLowerCase().includes('critical')) {
-      return <span style={styles.critical}>Critical</span>
-    }
-    return <span style={styles.warning}>Warning</span>
-  }
-
-  return <StatusBadge status="down" />
+/** Gauge alerts: "Disk warning: 83% (warning 80.0 / critical 90.0)" vs "Disk critical: …". */
+function hostGaugeIsCritical(message?: string): boolean {
+  return /\bcritical:/.test((message || '').toLowerCase())
 }
 
 export function incidentStatusLabel(incident: Incident): string {
@@ -53,13 +26,41 @@ export function incidentStatusLabel(incident: Incident): string {
   if (type === 'cert_change' || type === 'dns_change') return 'Notice'
   if (incident.resolved_at) return 'Resolved'
   if (incident.acknowledged_at) return 'Acknowledged'
+
   if (type === 'ssl_expiry') {
     const days = sslExpiryDays(incident.message)
     if (days != null && days <= 7) return 'Critical'
     return 'Warning'
   }
-  if (type === 'slow' || (type.startsWith('host_') && type !== 'host_offline')) return 'Warning'
+  if (type === 'slow') return 'Warning'
+
+  if (type.startsWith('host_') && type !== 'host_offline') {
+    if (type === 'host_root_login' || type === 'host_auth' || type === 'host_service') {
+      return 'Critical'
+    }
+    if (hostGaugeIsCritical(incident.message)) return 'Critical'
+    return 'Warning'
+  }
+
   return 'Open'
+}
+
+export function incidentRowClass(incident: Incident): string | undefined {
+  if (incident.resolved_at) return undefined
+  const label = incidentStatusLabel(incident)
+  if (label === 'Notice' || label === 'Warning') return 'row-warn'
+  return 'row-down'
+}
+
+/** Status label for incident rows — cert/DNS changes are notices, not downtime. */
+export default function IncidentStatus({ incident }: { incident: Incident }) {
+  const label = incidentStatusLabel(incident)
+  if (label === 'Notice') return <span style={styles.notice}>Notice</span>
+  if (label === 'Resolved') return <span style={styles.resolved}>Resolved</span>
+  if (label === 'Acknowledged') return <span style={styles.acked}>Acknowledged</span>
+  if (label === 'Critical') return <span style={styles.critical}>Critical</span>
+  if (label === 'Warning') return <span style={styles.warning}>Warning</span>
+  return <StatusBadge status="down" />
 }
 
 const styles: Record<string, React.CSSProperties> = {

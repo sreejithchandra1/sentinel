@@ -6,6 +6,13 @@ import (
 	"time"
 )
 
+const (
+	alertColorDanger  = "#E01E5A"
+	alertColorOK      = "#2EB67D"
+	alertColorInfo    = "#1D9BD1"
+	alertColorWarning = "#F59E0B"
+)
+
 // AlertMeta carries shared fields for Slack and email alert rendering.
 type AlertMeta struct {
 	Event        string
@@ -17,54 +24,64 @@ type AlertMeta struct {
 	IncidentID   string
 	EventAt      time.Time
 	StartedAt    *time.Time // for downtime on recovery
+	// Severity is "warning" or "critical" for host gauge alerts. Empty means infer from Message.
+	Severity string
 }
 
 func (m AlertMeta) Title() string {
+	var title string
 	switch strings.ToUpper(strings.TrimSpace(m.Event)) {
 	case "DOWN":
-		return "MONITOR DOWN"
+		title = "MONITOR DOWN"
 	case "RECOVERY":
-		return "MONITOR RECOVERED"
+		title = "MONITOR RECOVERED"
 	case "SLOW":
-		return "PERFORMANCE SLOW"
+		title = "PERFORMANCE SLOW"
 	case "NORMAL":
-		return "BACK TO NORMAL"
+		title = "BACK TO NORMAL"
 	case "HOST_OFFLINE":
-		return "HOST OFFLINE"
+		title = "HOST OFFLINE"
 	case "HOST_CPU":
-		return "HOST CPU HIGH"
+		title = "HOST CPU HIGH"
 	case "HOST_MEMORY":
-		return "HOST MEMORY HIGH"
+		title = "HOST MEMORY HIGH"
 	case "HOST_DISK":
-		return "HOST DISK HIGH"
+		title = "HOST DISK HIGH"
 	case "HOST_LOAD":
-		return "HOST LOAD HIGH"
+		title = "HOST LOAD HIGH"
 	case "HOST_SWAP":
-		return "HOST SWAP HIGH"
+		title = "HOST SWAP HIGH"
 	case "HOST_IOWAIT":
-		return "HOST DISK IO WAIT"
+		title = "HOST DISK IO WAIT"
 	case "HOST_AUTH":
-		return "HOST AUTH FAILURES"
+		title = "HOST AUTH FAILURES"
 	case "HOST_ROOT_LOGIN":
-		return "HOST ROOT LOGIN"
+		title = "HOST ROOT LOGIN"
 	case "HOST_REBOOT":
-		return "HOST REBOOT REQUIRED"
+		title = "HOST REBOOT REQUIRED"
 	case "HOST_SERVICE":
-		return "HOST SERVICE DOWN"
+		title = "HOST SERVICE DOWN"
 	default:
-		return strings.ToUpper(m.Event)
+		title = strings.ToUpper(m.Event)
 	}
+	if m.isWarningGauge() {
+		title = strings.Replace(title, " HIGH", " WARNING", 1)
+	}
+	return title
 }
 
 func (m AlertMeta) Color() string {
+	if m.isWarningGauge() {
+		return alertColorWarning
+	}
 	switch strings.ToUpper(strings.TrimSpace(m.Event)) {
 	case "DOWN", "SLOW", "HOST_OFFLINE", "HOST_CPU", "HOST_MEMORY", "HOST_DISK", "HOST_LOAD",
 		"HOST_SWAP", "HOST_IOWAIT", "HOST_AUTH", "HOST_ROOT_LOGIN", "HOST_REBOOT", "HOST_SERVICE":
-		return "#E01E5A"
+		return alertColorDanger
 	case "RECOVERY", "NORMAL":
-		return "#2EB67D"
+		return alertColorOK
 	default:
-		return "#1D9BD1"
+		return alertColorInfo
 	}
 }
 
@@ -81,12 +98,42 @@ func (m AlertMeta) StatusLabel() string {
 	case "HOST_OFFLINE":
 		return "OFFLINE"
 	case "HOST_CPU", "HOST_MEMORY", "HOST_DISK", "HOST_LOAD", "HOST_SWAP", "HOST_IOWAIT":
+		if m.isWarningGauge() {
+			return "WARNING"
+		}
 		return "HIGH"
 	case "HOST_AUTH", "HOST_ROOT_LOGIN", "HOST_REBOOT", "HOST_SERVICE":
 		return "ALERT"
 	default:
 		return strings.ToUpper(m.Event)
 	}
+}
+
+func isHostGaugeEvent(event string) bool {
+	switch strings.ToUpper(strings.TrimSpace(event)) {
+	case "HOST_CPU", "HOST_MEMORY", "HOST_DISK", "HOST_LOAD", "HOST_SWAP", "HOST_IOWAIT":
+		return true
+	default:
+		return false
+	}
+}
+
+// isWarningGauge reports a host CPU/disk/etc alert that has not reached the critical threshold.
+func (m AlertMeta) isWarningGauge() bool {
+	if !isHostGaugeEvent(m.Event) {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(m.Severity)) {
+	case "warning":
+		return true
+	case "critical":
+		return false
+	}
+	lower := strings.ToLower(m.Message)
+	if strings.Contains(lower, "critical:") {
+		return false
+	}
+	return strings.Contains(lower, "warning:")
 }
 
 func (m AlertMeta) ResponseLabel() string {
