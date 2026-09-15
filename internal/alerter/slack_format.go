@@ -42,6 +42,8 @@ func buildSlackPayload(meta AlertMeta) ([]byte, error) {
 		if meta.ResponseLabel() != "Timeout" {
 			if dns := ParseDNSChangeMessage(meta.Message); dns != nil {
 				bodyText += "\n" + formatSlackDNSChanges(dns)
+			} else if rows := ParseHostServiceMessage(meta.Message); len(rows) > 0 {
+				bodyText += "\n" + formatSlackHostServices(rows)
 			} else {
 				bodyText += fmt.Sprintf("\n_%s_", meta.Message)
 			}
@@ -117,6 +119,18 @@ func formatSlackDNSChanges(t *DNSChangeTables) string {
 		}
 	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+func formatSlackHostServices(rows []HostServiceRow) string {
+	var b strings.Builder
+	b.WriteString("*Services*\n")
+	for i, row := range rows {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(fmt.Sprintf("`%s` %s", row.Name, row.Status))
+	}
+	return b.String()
 }
 
 func mrkdwnField(text string) map[string]any {

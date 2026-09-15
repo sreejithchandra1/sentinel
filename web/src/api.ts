@@ -388,7 +388,7 @@ export interface Host {
   arch?: string
   agent_version?: string
   num_cpu?: number
-  uptime_seconds?: number
+  uptime_seconds: number
   reboot_required?: boolean
   last_seen_at?: string
   status: HostStatus

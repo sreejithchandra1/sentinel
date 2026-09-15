@@ -27,7 +27,7 @@ const (
 	DefaultHostAuthFailLimit   = 50
 	HostAuthFailWindow         = 5 * time.Minute
 	HostEnrollTTL              = 15 * time.Minute
-	HostAgentVersion           = "1.1.0"
+	HostAgentVersion           = "1.1.1"
 	MaxHostWatchedServices     = 32
 	MaxHostDiskMounts          = 24
 )
@@ -63,7 +63,7 @@ type Host struct {
 	Arch               string     `json:"arch,omitempty"`
 	AgentVersion       string     `json:"agent_version,omitempty"`
 	NumCPU             int        `json:"num_cpu,omitempty"`
-	UptimeSeconds      int        `json:"uptime_seconds,omitempty"`
+	UptimeSeconds      int        `json:"uptime_seconds"`
 	RebootRequired     bool       `json:"reboot_required"`
 	LastSeenAt         *time.Time `json:"last_seen_at,omitempty"`
 	Status             HostStatus `json:"status"`
@@ -400,4 +400,14 @@ func ServiceUnitName(name string) string {
 		return name
 	}
 	return name + ".service"
+}
+
+// ServiceIsHealthy reports systemd active states that are not an outage.
+func ServiceIsHealthy(active string) bool {
+	switch strings.ToLower(strings.TrimSpace(active)) {
+	case "active", "activating", "reloading":
+		return true
+	default:
+		return false
+	}
 }

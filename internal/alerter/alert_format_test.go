@@ -114,6 +114,24 @@ func TestBuildSlackPayloadDNSChange(t *testing.T) {
 	}
 }
 
+func TestBuildSlackPayloadHostServices(t *testing.T) {
+	raw, err := buildSlackPayload(AlertMeta{
+		Event:   "HOST_SERVICE",
+		Name:    "internal",
+		Message: "Watched services not active: nginx (missing), sshd (failed)",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	if !strings.Contains(s, "*Services*") || !strings.Contains(s, "`nginx` missing") || !strings.Contains(s, "`sshd` failed") {
+		t.Fatalf("slack payload missing service table: %s", s)
+	}
+	if strings.Contains(s, "_Watched services not active") {
+		t.Fatal("slack should not italicize the run-on sentence")
+	}
+}
+
 func TestRenderAlertEmail(t *testing.T) {
 	a := &Alerter{}
 	html := a.renderAlertEmail(AlertMeta{

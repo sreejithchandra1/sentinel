@@ -75,7 +75,7 @@ function bandAccent(b: Band): 'green' | 'yellow' | 'red' {
 }
 
 function serviceOk(active?: string): boolean {
-  return active === 'active' || active === 'activating'
+  return active === 'active' || active === 'activating' || active === 'reloading'
 }
 
 function hostHealth(host: Host, latest: HostStats['points'][number] | undefined, ncpu: number): { score: number; status: HealthStatus } {
@@ -400,7 +400,7 @@ export default function HostDetail() {
             <InfoRow label="Agent" value={host.agent_version || '—'} />
             <InfoRow label="CPUs" value={ncpu ? String(ncpu) : '—'} />
             <InfoRow label="Arch" value={host.arch || '—'} />
-            <InfoRow label="Uptime" value={host.uptime_seconds ? formatDuration(host.uptime_seconds) : '—'} />
+            <InfoRow label="Uptime" value={(host.uptime_seconds ?? 0) > 0 ? formatDuration(host.uptime_seconds) : '—'} />
             <InfoRow label="Last check-in" value={timeAgo(host.last_seen_at)} />
             <InfoRow label="Health" value={`${health.score}/100`} color={healthColor(health.status)} />
             <InfoRow label="Status" value={health.status} color={healthColor(health.status)} />

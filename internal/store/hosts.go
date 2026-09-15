@@ -305,7 +305,7 @@ func (s *Store) SetHostIngestToken(id, token string) error {
 	return err
 }
 
-func (s *Store) TouchHostSeen(id string, hostname, osName, arch, agentVersion string, numCPU int, at time.Time) error {
+func (s *Store) TouchHostSeen(id string, hostname, osName, arch, agentVersion string, numCPU, uptimeSeconds int, at time.Time) error {
 	_, err := s.db.Exec(`
 		UPDATE hosts SET
 			hostname = CASE WHEN ? != '' THEN ? ELSE hostname END,
@@ -313,28 +313,46 @@ func (s *Store) TouchHostSeen(id string, hostname, osName, arch, agentVersion st
 			arch = CASE WHEN ? != '' THEN ? ELSE arch END,
 			agent_version = CASE WHEN ? != '' THEN ? ELSE agent_version END,
 			num_cpu = CASE WHEN ? > 0 THEN ? ELSE num_cpu END,
+			uptime_seconds = CASE WHEN ? > 0 THEN ? ELSE uptime_seconds END,
 			last_seen_at = ?, status = ?, consecutive_misses = 0, updated_at = ?
 		WHERE id = ?`,
 		hostname, hostname, osName, osName, arch, arch, agentVersion, agentVersion,
 		numCPU, numCPU,
+		uptimeSeconds, uptimeSeconds,
 		formatTime(at), string(models.HostOnline), formatTime(at), id,
 	)
 	return err
 }
 
 func (s *Store) UpdateHostSnapshot(id string, osVersion, kernel string, reboot bool, uptimeSeconds int, disks []models.HostDisk, services []models.HostServiceStatus, sec *models.HostSecurity) error {
+	svcJSON := ""
+	if len(services) > 0 {
+		svcJSON = marshalJSON(services)
+	}
+	diskJSON := ""
+	if len(disks) > 0 {
+		diskJSON = marshalJSON(disks)
+	}
+	secJSON := ""
+	if sec != nil {
+		secJSON = marshalJSON(sec)
+	}
 	_, err := s.db.Exec(`
 		UPDATE hosts SET
 			os_version = CASE WHEN ? != '' THEN ? ELSE os_version END,
 			kernel_version = CASE WHEN ? != '' THEN ? ELSE kernel_version END,
 			reboot_required = ?,
 			uptime_seconds = CASE WHEN ? > 0 THEN ? ELSE uptime_seconds END,
-			disks_latest_json = ?, services_latest_json = ?, security_json = ?,
+			disks_latest_json = CASE WHEN ? != '' THEN ? ELSE disks_latest_json END,
+			services_latest_json = CASE WHEN ? != '' THEN ? ELSE services_latest_json END,
+			security_json = CASE WHEN ? != '' THEN ? ELSE security_json END,
 			updated_at = ?
 		WHERE id = ?`,
 		osVersion, osVersion, kernel, kernel, boolToInt(reboot),
 		uptimeSeconds, uptimeSeconds,
-		marshalJSON(disks), marshalJSON(services), marshalJSON(sec),
+		diskJSON, diskJSON,
+		svcJSON, svcJSON,
+		secJSON, secJSON,
 		formatTime(time.Now().UTC()), id,
 	)
 	return err

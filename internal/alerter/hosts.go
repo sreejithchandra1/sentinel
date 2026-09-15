@@ -210,23 +210,56 @@ func (a *Alerter) evalHostAuth(h *models.Host, sample *models.HostSample) error 
 }
 
 func (a *Alerter) evalHostServices(h *models.Host, sample *models.HostSample) error {
-	var down []string
-	byName := map[string]models.HostServiceStatus{}
-	for _, st := range h.ServiceStatus {
-		byName[st.Name] = st
+	if len(h.ServiceStatus) == 0 {
+		return nil
 	}
-	for _, name := range h.Services {
-		st, ok := byName[name]
-		if !ok || (st.Active != "active" && st.Active != "activating") {
-			state := "missing"
-			if ok {
-				state = st.Active
-			}
-			down = append(down, name+" ("+state+")")
+	rows := hostServiceRows(h)
+	if hostServiceCollectionUnusable(rows) {
+		return nil
+	}
+	down := hostServicesDown(rows)
+	msg := FormatHostServiceMessage(rows, down)
+	after := hostOfflineThreshold(h)
+	return a.evalHostServiceState(h, sample, down, after, msg)
+}
+
+func (a *Alerter) evalHostServiceState(h *models.Host, sample *models.HostSample, down bool, after int, msg string) error {
+	if after < 1 {
+		after = defaultFlapThreshold
+	}
+	state, err := a.store.GetHostAlertState(h.ID, "service")
+	if err != nil {
+		return err
+	}
+	if down {
+		state.ConsecutiveHigh++
+		state.ConsecutiveOK = 0
+		if err := a.store.UpsertHostAlertState(state); err != nil {
+			return err
 		}
+		if state.ConsecutiveHigh < after {
+			log.Printf("alerter: host %s service alert pending: %d/%d", h.DisplayName(), state.ConsecutiveHigh, after)
+			return nil
+		}
+		return a.evalHostFlag(h, sample, "service", true, models.IncidentHostService, "HOST_SERVICE", msg)
 	}
-	msg := "Watched services not active: " + strings.Join(down, ", ")
-	return a.evalHostFlag(h, sample, "service", len(down) > 0, models.IncidentHostService, "HOST_SERVICE", msg)
+	state.ConsecutiveOK++
+	state.ConsecutiveHigh = 0
+	if err := a.store.UpsertHostAlertState(state); err != nil {
+		return err
+	}
+	open, err := a.store.GetOpenIncident(h.ID, models.IncidentHostService)
+	if err != nil {
+		return err
+	}
+	if open == nil {
+		return nil
+	}
+	if state.ConsecutiveOK < after {
+		log.Printf("alerter: host %s service recovery pending: %d/%d", h.DisplayName(), state.ConsecutiveOK, after)
+		return nil
+	}
+	return a.evalHostFlag(h, sample, "service", false, models.IncidentHostService, "HOST_SERVICE", msg)
 }
 
 func (a *Alerter) evalHostFlag(h *models.Host, sample *models.HostSample, metric string, bad bool, incType models.IncidentType, event, msg string) error {

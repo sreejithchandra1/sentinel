@@ -32,6 +32,31 @@ func TestHostCRUDAndEnroll(t *testing.T) {
 		t.Fatalf("get: %v %+v", err, got)
 	}
 
+	if err := st.UpdateHostSnapshot(h.ID, "Ubuntu 20.04", "5.4.0", false, 86400,
+		[]models.HostDisk{{Mount: "/", Percent: 10}},
+		[]models.HostServiceStatus{{Name: "nginx", Active: "active"}},
+		&models.HostSecurity{LogsReadable: true},
+	); err != nil {
+		t.Fatal(err)
+	}
+	got, err = st.GetHost(h.ID)
+	if err != nil || got == nil || got.UptimeSeconds != 86400 {
+		t.Fatalf("uptime after snapshot: %v %+v", err, got)
+	}
+	if len(got.ServiceStatus) != 1 || got.ServiceStatus[0].Name != "nginx" {
+		t.Fatalf("services: %+v", got.ServiceStatus)
+	}
+	if err := st.UpdateHostSnapshot(h.ID, "", "", false, 0, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	got, err = st.GetHost(h.ID)
+	if err != nil || got == nil || got.UptimeSeconds != 86400 {
+		t.Fatalf("empty ingest must keep uptime: %v %+v", err, got)
+	}
+	if len(got.ServiceStatus) != 1 || got.ServiceStatus[0].Active != "active" {
+		t.Fatalf("empty ingest must keep services: %+v", got.ServiceStatus)
+	}
+
 	token := "enroll-secret-token"
 	expires := time.Now().UTC().Add(15 * time.Minute)
 	if err := st.CreateHostEnrollToken(h.ID, token, expires); err != nil {
@@ -60,8 +85,12 @@ func TestHostCRUDAndEnroll(t *testing.T) {
 	}
 
 	now := time.Now().UTC()
-	if err := st.TouchHostSeen(h.ID, "web-1.local", "linux", "amd64", "1.0.0", 4, now); err != nil {
+	if err := st.TouchHostSeen(h.ID, "web-1.local", "linux", "amd64", "1.0.0", 4, 3600, now); err != nil {
 		t.Fatal(err)
+	}
+	got, err = st.GetHost(h.ID)
+	if err != nil || got == nil || got.UptimeSeconds != 3600 {
+		t.Fatalf("uptime after seen: %v %+v", err, got)
 	}
 	cpu, mem := 12.5, 40.0
 	if err := st.InsertHostSample(&models.HostSample{
@@ -180,4 +209,3 @@ func TestMigrateV23ReplacesLegacyHostsTable(t *testing.T) {
 }
 
 func floatPtr(v float64) *float64 { return &v }
-

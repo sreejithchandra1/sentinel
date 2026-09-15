@@ -183,7 +183,7 @@ func (s *Server) handleAgentIngest(w http.ResponseWriter, r *http.Request) {
 		jsonInternal(w, err)
 		return
 	}
-	if err := s.store.TouchHostSeen(h.ID, payload.Hostname, "linux", h.Arch, payload.AgentVersion, payload.NumCPU, now); err != nil {
+	if err := s.store.TouchHostSeen(h.ID, payload.Hostname, "linux", h.Arch, payload.AgentVersion, payload.NumCPU, payload.UptimeSeconds, now); err != nil {
 		jsonInternal(w, err)
 		return
 	}

@@ -87,6 +87,9 @@ func main() {
 	}
 
 	run()
+	if len(collect.Services) > 0 {
+		run()
+	}
 	for {
 		select {
 		case <-stop:
