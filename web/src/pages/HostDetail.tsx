@@ -7,6 +7,7 @@ import { api, Host, HostDisk, HostStats, Incident } from '../api'
 import ConfirmDialog from '../components/ConfirmDialog'
 import IncidentStatus, { incidentLifecycleLabel, incidentStatusLabel } from '../components/IncidentStatus'
 import MetricCard from '../components/MetricCard'
+import HostMetricCard, { hostMetricIcons } from '../components/HostMetricCard'
 import PageHeader from '../components/PageHeader'
 import Panel from '../components/Panel'
 import SegmentedTabs from '../components/SegmentedTabs'
@@ -67,12 +68,6 @@ function metricBand(value: number | null | undefined, warning: number, critical:
   if (value >= critical) return 'Critical'
   if (value >= warning) return 'Warning'
   return 'Normal'
-}
-
-function bandAccent(b: Band): 'green' | 'yellow' | 'red' {
-  if (b === 'Critical') return 'red'
-  if (b === 'Warning') return 'yellow'
-  return 'green'
 }
 
 function worstDisk(disks: HostDisk[]): HostDisk | undefined {
@@ -259,13 +254,13 @@ export default function HostDetail() {
   const health = hostHealth(host, latest, ncpu)
   const worst = worstDisk(disks)
   const diskHint = diskSizeHint(worst)
-  const kpis: { label: string; value: string; band: Band; hint?: string }[] = [
-    { label: 'CPU', value: `${fmt(latest?.cpu_percent)}%`, band: metricBand(latest?.cpu_percent, host.alert_cpu_warning || 80, host.alert_cpu_threshold || 90) },
-    { label: 'Memory', value: `${fmt(latest?.mem_percent)}%`, band: metricBand(latest?.mem_percent, host.alert_memory_warning || 80, host.alert_memory_threshold || 90) },
-    { label: 'Swap', value: `${fmt(latest?.swap_percent)}%`, band: metricBand(latest?.swap_percent, host.alert_swap_warning || 80, host.alert_swap_threshold || 90) },
-    { label: 'Disk', value: `${fmt(latest?.disk_percent)}%`, band: metricBand(latest?.disk_percent, host.alert_disk_warning || 80, host.alert_disk_threshold || 90), hint: diskHint || undefined },
-    { label: 'Load', value: `${fmt(loadPct)}%`, band: metricBand(loadPct, host.alert_load_warning || 80, loadCrit) },
-    { label: 'I/O Wait', value: `${fmt(latest?.iowait_percent)}%`, band: metricBand(latest?.iowait_percent, host.alert_iowait_warning || 80, host.alert_iowait_threshold || 90) },
+  const kpis = [
+    { label: 'CPU', value: `${fmt(latest?.cpu_percent)}%`, band: metricBand(latest?.cpu_percent, host.alert_cpu_warning || 80, host.alert_cpu_threshold || 90), color: colors.brand, icon: hostMetricIcons.cpu, series: chartData.map(p => p.cpu) },
+    { label: 'Memory', value: `${fmt(latest?.mem_percent)}%`, band: metricBand(latest?.mem_percent, host.alert_memory_warning || 80, host.alert_memory_threshold || 90), color: colors.blue, icon: hostMetricIcons.memory, series: chartData.map(p => p.mem) },
+    { label: 'Swap', value: `${fmt(latest?.swap_percent)}%`, band: metricBand(latest?.swap_percent, host.alert_swap_warning || 80, host.alert_swap_threshold || 90), color: '#A78BFA', icon: hostMetricIcons.swap, series: chartData.map(p => p.swap) },
+    { label: 'Disk', value: `${fmt(latest?.disk_percent)}%`, band: metricBand(latest?.disk_percent, host.alert_disk_warning || 80, host.alert_disk_threshold || 90), hint: diskHint || undefined, color: colors.yellow, icon: hostMetricIcons.disk, series: chartData.map(p => p.disk) },
+    { label: 'Load', value: `${fmt(loadPct)}%`, band: metricBand(loadPct, host.alert_load_warning || 80, loadCrit), color: colors.brand, icon: hostMetricIcons.load, series: chartData.map(p => p.loadPct) },
+    { label: 'I/O Wait', value: `${fmt(latest?.iowait_percent)}%`, band: metricBand(latest?.iowait_percent, host.alert_iowait_warning || 80, host.alert_iowait_threshold || 90), color: colors.green, icon: hostMetricIcons.iowait, series: chartData.map(p => p.iowait) },
   ]
 
   function setHostField<K extends keyof Host>(key: K, value: Host[K]) {
@@ -344,7 +339,16 @@ export default function HostDetail() {
 
       <div className="grid-6" style={{ marginBottom: 16 }}>
         {kpis.map(k => (
-          <MetricCard key={k.label} label={k.label} value={k.value} sub={k.hint ? `${k.band} · ${k.hint}` : k.band} accent={bandAccent(k.band)} />
+          <HostMetricCard
+            key={k.label}
+            icon={k.icon}
+            label={k.label}
+            value={k.value}
+            band={k.band}
+            hint={k.hint}
+            color={k.color}
+            series={k.series}
+          />
         ))}
       </div>
 

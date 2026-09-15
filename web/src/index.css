@@ -942,7 +942,7 @@ input::-ms-clear {
 .grid-6 {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .grid-3 {
