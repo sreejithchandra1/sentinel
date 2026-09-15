@@ -42,19 +42,35 @@ var (
 func collectSecurity(now time.Time, window time.Duration) *models.HostSecurity {
 	sec := &models.HostSecurity{}
 	cutoff := now.Add(-window)
+	var fileNotes []string
 	for _, path := range authLogPaths {
 		f, err := os.Open(path)
 		if err != nil {
+			fileNotes = append(fileNotes, path+": "+err.Error())
 			continue
 		}
 		parseAuthLog(f, cutoff, now, sec)
 		f.Close()
 		sec.LogsReadable = true
+		sec.LogSource = "file:" + path
+		if len(fileNotes) > 0 {
+			sec.LogError = strings.Join(fileNotes, "; ")
+		}
 		return sec
 	}
 	// RHEL/Alma/Rocky: /var/log/secure is root:root 0600. Read the systemd journal instead.
 	if collectSecurityJournal(cutoff, now, sec) {
 		sec.LogsReadable = true
+		sec.LogSource = "journal"
+		if len(fileNotes) > 0 {
+			sec.LogError = strings.Join(fileNotes, "; ")
+		}
+		return sec
+	}
+	if len(fileNotes) > 0 {
+		sec.LogError = strings.Join(append(fileNotes, "journal: not readable"), "; ")
+	} else {
+		sec.LogError = "journal: not readable"
 	}
 	return sec
 }

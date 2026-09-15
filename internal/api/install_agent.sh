@@ -100,20 +100,9 @@ if [ -n "$extra_groups" ]; then
   supp_line="SupplementaryGroups=${extra_groups}"
 fi
 
-cat > "$UNIT_PATH" <<EOF
-[Unit]
-Description=Sentinel host agent
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=${AGENT_USER}
-Group=${AGENT_USER}
-${supp_line}
-ExecStart=${BIN_PATH} -config ${CONF_FILE}
-Restart=on-failure
-RestartSec=10
+# Shared sandbox: keep diagnose oneshot identical to the running agent.
+unit_sandbox() {
+  cat <<EOF
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
@@ -130,12 +119,48 @@ CapabilityBoundingSet=
 AmbientCapabilities=
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 SystemCallArchitectures=native
-BindReadOnlyPaths=-/var/log/journal -/run/log/journal -/run/systemd/journal
+BindReadOnlyPaths=-/var/log/journal -/run/log/journal -/run/systemd/journal -/var/log/secure -/var/log/auth.log
+ExecStartPre=-+/usr/bin/setfacl -m u:${AGENT_USER}:r /var/log/secure
+ExecStartPre=-+/usr/bin/setfacl -m u:${AGENT_USER}:r /var/log/auth.log
+EOF
+}
+
+cat > "$UNIT_PATH" <<EOF
+[Unit]
+Description=Sentinel host agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=${AGENT_USER}
+Group=${AGENT_USER}
+${supp_line}
+ExecStart=${BIN_PATH} -config ${CONF_FILE}
+Restart=on-failure
+RestartSec=10
+$(unit_sandbox)
 
 [Install]
 WantedBy=multi-user.target
 EOF
 chmod 0644 "$UNIT_PATH"
+
+DIAG_PATH="/etc/systemd/system/sentinel-agent-diagnose.service"
+cat > "$DIAG_PATH" <<EOF
+[Unit]
+Description=Sentinel host agent auth-log diagnose
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=${AGENT_USER}
+Group=${AGENT_USER}
+${supp_line}
+ExecStart=${BIN_PATH} -diagnose-auth
+$(unit_sandbox)
+EOF
+chmod 0644 "$DIAG_PATH"
 
 systemctl daemon-reload
 systemctl enable sentinel-agent.service
@@ -143,3 +168,7 @@ systemctl enable sentinel-agent.service
 # write a new ingest token and leave the old process 401ing.
 systemctl restart sentinel-agent.service
 echo "sentinel-agent installed and started as ${AGENT_USER}"
+echo "to test auth logs as ${AGENT_USER}:"
+echo "  sudo -u ${AGENT_USER} ${BIN_PATH} -diagnose-auth"
+echo "or (same systemd sandbox as the service):"
+echo "  systemctl start sentinel-agent-diagnose && journalctl -u sentinel-agent-diagnose -e --no-pager"

@@ -27,7 +27,7 @@ const (
 	DefaultHostAuthFailLimit   = 50
 	HostAuthFailWindow         = 5 * time.Minute
 	HostEnrollTTL              = 15 * time.Minute
-	HostAgentVersion           = "1.1.6"
+	HostAgentVersion           = "1.1.7"
 	MaxHostWatchedServices     = 32
 	MaxHostDiskMounts          = 24
 )
@@ -50,6 +50,8 @@ type HostSecurity struct {
 	AuthFailed5m  int    `json:"auth_failed_5m"`
 	RootLogins5m  int    `json:"root_logins_5m"`
 	LastRootLogin string `json:"last_root_login,omitempty"`
+	LogSource     string `json:"log_source,omitempty"`
+	LogError      string `json:"log_error,omitempty"`
 }
 
 type Host struct {

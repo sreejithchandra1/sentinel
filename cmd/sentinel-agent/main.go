@@ -31,12 +31,17 @@ type ingestReply struct {
 }
 
 func main() {
+	configPath := flag.String("config", "/etc/sentinel-agent/config.yaml", "path to agent config")
+	diagnoseAuth := flag.Bool("diagnose-auth", false, "print auth log and journal access as this user, then exit")
+	flag.Parse()
+
 	if os.Geteuid() == 0 {
 		log.Fatal("refusing to run as root; install as the sentinel-agent user")
 	}
-
-	configPath := flag.String("config", "/etc/sentinel-agent/config.yaml", "path to agent config")
-	flag.Parse()
+	if *diagnoseAuth {
+		diagnoseAuthLogs()
+		return
+	}
 
 	cfg, err := loadConfig(*configPath)
 	if err != nil {

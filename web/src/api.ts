@@ -375,6 +375,8 @@ export interface HostSecurity {
   auth_failed_5m: number
   root_logins_5m: number
   last_root_login?: string
+  log_source?: string
+  log_error?: string
 }
 
 export interface Host {
