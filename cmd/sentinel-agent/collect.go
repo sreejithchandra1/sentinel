@@ -65,10 +65,7 @@ func hostname() string {
 	if err != nil {
 		return ""
 	}
-	if i := strings.IndexByte(h, '.'); i > 0 {
-		return h[:i]
-	}
-	return h
+	return strings.TrimSpace(h)
 }
 
 func osPrettyName() string {

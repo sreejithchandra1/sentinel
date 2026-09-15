@@ -43,7 +43,7 @@ if [ -z "$want" ] || [ "$want" != "$got" ]; then
   exit 1
 fi
 
-hostname_val="$(hostname -s 2>/dev/null || hostname || echo unknown)"
+hostname_val="$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo unknown)"
 enroll_json="$(printf '{"token":"%s","hostname":"%s","os":"linux","arch":"%s"}' "$TOKEN" "$hostname_val" "$arch")"
 enroll_out="$(curl -fsSL -X POST -H 'Content-Type: application/json' \
   -d "$enroll_json" "${SENTINEL_URL}/api/agent/enroll")"
