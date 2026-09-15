@@ -108,11 +108,7 @@ function hostHealth(host: Host, latest: HostStats['points'][number] | undefined,
   }).length
   if (failed) { score -= Math.min(36, failed * 12); raise('CRITICAL') }
   if (host.reboot_required) { score -= 6; raise('WARNING') }
-  const sec = host.security
-  const authTotal = (sec?.ssh_failed_5m || 0) + (sec?.sudo_failed_5m || 0) + (sec?.auth_failed_5m || 0)
-  if ((sec?.root_logins_5m || 0) > 0) { score -= 16; raise('CRITICAL') }
-  if (authTotal >= (host.alert_auth_threshold || 50)) { score -= 20; raise('CRITICAL') }
-  else if ((sec?.ssh_failed_5m || 0) >= 10) { score -= 6; raise('WARNING') }
+  // Auth bursts and root logins stay on the Security tab; they are not host health.
   if (host.status === 'offline') {
     score = Math.min(score, 25)
     status = 'OFFLINE'
