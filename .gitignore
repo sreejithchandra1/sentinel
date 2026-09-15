@@ -11,3 +11,4 @@ internal/agentbin/files/linux-amd64
 internal/agentbin/files/linux-arm64
 config.yaml
 .DS_Store
+.cursor/
