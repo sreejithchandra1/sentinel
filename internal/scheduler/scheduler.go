@@ -76,6 +76,7 @@ func (sch *Scheduler) Start(ctx context.Context) {
 		case <-ticker.C:
 			sch.enqueueMonitors(ctx)
 			sch.enqueuePerformance(ctx)
+			sch.tickHosts()
 		case <-pruneTicker.C:
 			sch.prune()
 		}
@@ -246,6 +247,21 @@ func (sch *Scheduler) runPerformanceCheck(ctx context.Context, t *models.Perform
 	}
 }
 
+func (sch *Scheduler) tickHosts() {
+	hosts, err := sch.store.ListEnabledHosts()
+	if err != nil {
+		log.Printf("scheduler: list hosts: %v", err)
+		return
+	}
+	now := time.Now().UTC()
+	for i := range hosts {
+		h := hosts[i]
+		if err := sch.alerter.HandleHostOfflineCheck(&h, now); err != nil {
+			log.Printf("scheduler: host offline %s: %v", h.ID, err)
+		}
+	}
+}
+
 func (sch *Scheduler) prune() {
 	days := sch.retention
 	if days < 30 {
@@ -269,6 +285,12 @@ func (sch *Scheduler) prune() {
 		log.Printf("scheduler: prune email log: %v", err)
 	} else if en > 0 {
 		log.Printf("scheduler: pruned %d old email log rows", en)
+	}
+	hn, err := sch.store.PruneOldHostSamples(before)
+	if err != nil {
+		log.Printf("scheduler: prune host samples: %v", err)
+	} else if hn > 0 {
+		log.Printf("scheduler: pruned %d old host samples", hn)
 	}
 }
 

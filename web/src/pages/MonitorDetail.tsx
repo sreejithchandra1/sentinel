@@ -8,7 +8,7 @@ import { ColGroup, ResizableTh, useColumnResize, useTableSort } from '../compone
 import DeleteMonitorButton from '../components/DeleteMonitorButton'
 import MonitorForm from './MonitorForm'
 import IncidentFilters, { IncidentFilterValues } from '../components/IncidentFilters'
-import IncidentStatus, { incidentStatusLabel } from '../components/IncidentStatus'
+import IncidentStatus, { incidentRowClass, incidentStatusLabel } from '../components/IncidentStatus'
 import MetricCard from '../components/MetricCard'
 import NextCheckCountdown from '../components/NextCheckCountdown'
 import PageHeader from '../components/PageHeader'
@@ -536,7 +536,7 @@ function IncidentsTable({ monitorId }: { monitorId: string }) {
               sorted.map(inc => (
                 <tr
                   key={inc.id}
-                  className={!inc.resolved_at ? ((inc.type === 'slow' || inc.type === 'ssl_expiry') ? 'row-warn' : 'row-down') : undefined}
+                  className={incidentRowClass(inc)}
                   style={{ cursor: 'pointer' }}
                   onClick={() => navigate(`/incidents/${inc.id}`)}
                 >

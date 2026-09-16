@@ -190,7 +190,7 @@ func (a *Alerter) HandleResult(m *models.Monitor, result *models.CheckResult) er
 			}
 			m.LastStatus = models.StatusDown
 			log.Printf("alerter: recovery pending for %s: %d/%d successful checks", m.Name, streak, threshold)
-			a.recordEmailPending(alertLogMeta(m), recoverySubject(m.Name),
+			a.recordEmailPending(alertLogMeta(m), recoverySubject(m.Name, &open.StartedAt, result.CheckedAt),
 				fmt.Sprintf("%d/%d successful checks", streak, threshold))
 			return nil
 		}
@@ -611,6 +611,22 @@ var emailTmpl = template.Must(template.New("email").Parse(`<!DOCTYPE html>
                         </table>
                         {{end}}
                       </div>
+                      {{else if .HasServices}}
+                      <div style="margin-bottom:16px;">
+                        <div style="font-size:11px;letter-spacing:0.06em;color:#8b95a5;text-transform:uppercase;margin:0 0 6px;">Services</div>
+                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;background:#12171e;border-radius:8px;margin-bottom:12px;">
+                          <tr>
+                            <td style="padding:8px 12px;color:#8b95a5;font-size:11px;font-weight:600;border-bottom:1px solid #243041;">Service</td>
+                            <td style="padding:8px 12px;color:#8b95a5;font-size:11px;font-weight:600;border-bottom:1px solid #243041;">Status</td>
+                          </tr>
+                          {{range .ServiceRows}}
+                          <tr>
+                            <td style="padding:8px 12px;color:#f4f7fb;font-size:13px;font-family:ui-monospace,Menlo,monospace;vertical-align:top;border-bottom:1px solid #243041;">{{.Name}}</td>
+                            <td style="padding:8px 12px;color:#f4f7fb;font-size:13px;vertical-align:top;border-bottom:1px solid #243041;">{{.Status}}</td>
+                          </tr>
+                          {{end}}
+                        </table>
+                      </div>
                       {{else if .ShowMessage}}<div style="color:#a8b3c2;font-size:13px;margin-bottom:16px;">{{.Message}}</div>{{end}}
                       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;background:#12171e;border-radius:8px;">
                         <tr>
@@ -665,6 +681,8 @@ type emailData struct {
 	ShowMessage                                  bool
 	HasDNS                                       bool
 	DNSSections                                  []emailDNSSection
+	HasServices                                  bool
+	ServiceRows                                  []HostServiceRow
 }
 
 func (a *Alerter) renderAlertEmail(meta AlertMeta) string {
@@ -677,12 +695,16 @@ func (a *Alerter) renderAlertEmail(meta AlertMeta) string {
 	}
 	showMsg := meta.Message != "" && meta.Event != "RECOVERY" && meta.Event != "NORMAL" && meta.ResponseLabel() != "Timeout"
 	dns := ParseDNSChangeMessage(meta.Message)
+	svcRows := ParseHostServiceMessage(meta.Message)
 	var dnsSections []emailDNSSection
 	if dns != nil {
 		dnsSections = []emailDNSSection{
 			{Title: "Previous", Rows: dns.Previous},
 			{Title: "Current", Rows: dns.Current},
 		}
+		showMsg = false
+	}
+	if len(svcRows) > 0 {
 		showMsg = false
 	}
 	var buf bytes.Buffer
@@ -694,6 +716,8 @@ func (a *Alerter) renderAlertEmail(meta AlertMeta) string {
 		ShowMessage:  showMsg,
 		HasDNS:       dns != nil,
 		DNSSections:  dnsSections,
+		HasServices:  len(svcRows) > 0,
+		ServiceRows:  svcRows,
 		DashboardURL: meta.DashboardURL,
 		Color:        meta.Color(),
 		Field1Label:  field1Label,

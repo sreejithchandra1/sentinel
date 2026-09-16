@@ -103,11 +103,12 @@ func (s *Store) GetIncident(id string) (*models.IncidentListItem, string, error)
 	row := s.db.QueryRow(`
 		SELECT i.id, i.monitor_id, i.type, i.message, i.started_at, i.resolved_at,
 			i.acknowledged_at, i.acknowledged_by,
-			COALESCE(m.name, pt.name, '') AS monitor_name,
-			COALESCE(m.tenant_id, pt.tenant_id, '') AS tenant_id
+			COALESCE(m.name, pt.name, h.name, h.hostname, '') AS monitor_name,
+			COALESCE(m.tenant_id, pt.tenant_id, h.tenant_id, '') AS tenant_id
 		FROM incidents i
 		LEFT JOIN monitors m ON m.id = i.monitor_id
 		LEFT JOIN performance_targets pt ON pt.id = i.monitor_id
+		LEFT JOIN hosts h ON h.id = i.monitor_id
 		WHERE i.id = ?`, id)
 
 	var item models.IncidentListItem
@@ -209,10 +210,11 @@ func (s *Store) QueryIncidents(q IncidentQuery) ([]models.IncidentListItem, erro
 	sqlQ := `
 		SELECT i.id, i.monitor_id, i.type, i.message, i.started_at, i.resolved_at,
 			i.acknowledged_at, i.acknowledged_by,
-			COALESCE(m.name, pt.name, '') AS monitor_name
+			COALESCE(m.name, pt.name, h.name, h.hostname, '') AS monitor_name
 		FROM incidents i
 		LEFT JOIN monitors m ON m.id = i.monitor_id
-		LEFT JOIN performance_targets pt ON pt.id = i.monitor_id`
+		LEFT JOIN performance_targets pt ON pt.id = i.monitor_id
+		LEFT JOIN hosts h ON h.id = i.monitor_id`
 	conds, args := incidentConds(q)
 	if len(conds) > 0 {
 		sqlQ += ` WHERE ` + strings.Join(conds, ` AND `)
@@ -250,7 +252,8 @@ func (s *Store) CountIncidents(q IncidentQuery) (int, error) {
 		SELECT COUNT(*)
 		FROM incidents i
 		LEFT JOIN monitors m ON m.id = i.monitor_id
-		LEFT JOIN performance_targets pt ON pt.id = i.monitor_id`
+		LEFT JOIN performance_targets pt ON pt.id = i.monitor_id
+		LEFT JOIN hosts h ON h.id = i.monitor_id`
 	conds, args := incidentConds(q)
 	if len(conds) > 0 {
 		sqlQ += ` WHERE ` + strings.Join(conds, ` AND `)
@@ -286,8 +289,8 @@ func incidentConds(q IncidentQuery) ([]string, []any) {
 		args = append(args, q.MonitorID)
 	}
 	if q.TenantID != "" {
-		conds = append(conds, `(m.tenant_id = ? OR pt.tenant_id = ?)`)
-		args = append(args, q.TenantID, q.TenantID)
+		conds = append(conds, `(m.tenant_id = ? OR pt.tenant_id = ? OR h.tenant_id = ?)`)
+		args = append(args, q.TenantID, q.TenantID, q.TenantID)
 	}
 	if q.From != nil {
 		conds = append(conds, `i.started_at >= ?`)

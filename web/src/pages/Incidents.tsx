@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { api, Incident, Monitor } from '../api'
+import { api, Incident, Monitor, incidentSubjectPath } from '../api'
 import { ColGroup, ResizableTh, useColumnResize, useTableSort } from '../components/ColumnResize'
 import IncidentFilters, { IncidentFilterValues } from '../components/IncidentFilters'
-import IncidentStatus from '../components/IncidentStatus'
+import IncidentStatus, { incidentRowClass } from '../components/IncidentStatus'
 import PageHeader from '../components/PageHeader'
 import Panel from '../components/Panel'
 import { colors } from '../theme'
@@ -142,18 +142,16 @@ export default function Incidents() {
                 </tr>
               ) : (
                 sorted.map(inc => {
-                  const open = !inc.resolved_at
-                  const warn = inc.type === 'slow' || inc.type === 'ssl_expiry'
                   return (
                   <tr
                     key={inc.id}
-                    className={open ? (warn ? 'row-warn' : 'row-down') : undefined}
+                    className={incidentRowClass(inc)}
                     style={{ cursor: 'pointer' }}
                     onClick={() => navigate(`/incidents/${inc.id}`)}
                   >
                     <td>
                       <Link
-                        to={`/monitors/${inc.monitor_id}`}
+                        to={incidentSubjectPath(inc)}
                         style={styles.link}
                         onClick={e => e.stopPropagation()}
                       >

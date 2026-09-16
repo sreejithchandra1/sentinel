@@ -1,8 +1,8 @@
 package alerter
 
 import (
-	"fmt"
 	"log"
+	"time"
 
 	"github.com/sentinel-monitoring/sentinel/internal/models"
 )
@@ -74,13 +74,13 @@ func (a *Alerter) recordEmailPending(meta smtpLogMeta, subject, errMsg string) {
 }
 
 func downSubject(name string) string {
-	return fmt.Sprintf("[Sentinel] DOWN: %s", name)
+	return AlertMeta{Event: "DOWN", Name: name}.FallbackText()
 }
 
-func recoverySubject(name string) string {
-	return fmt.Sprintf("[Sentinel] RECOVERY: %s", name)
+func recoverySubject(name string, startedAt *time.Time, eventAt time.Time) string {
+	return AlertMeta{Event: "RECOVERY", Name: name, StartedAt: startedAt, EventAt: eventAt}.FallbackText()
 }
 
 func slowSubject(name string) string {
-	return fmt.Sprintf("[Sentinel] SLOW: %s", name)
+	return AlertMeta{Event: "SLOW", Name: name}.FallbackText()
 }

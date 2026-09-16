@@ -181,7 +181,7 @@ func (a *Alerter) HandlePerformanceResult(t *models.PerformanceTarget, result *m
 
 	streak := a.incRecoveryStreak(t.ID)
 	if streak < threshold {
-		a.recordEmailPending(perfLogMeta(t), "[Sentinel] NORMAL: "+t.Name,
+		a.recordEmailPending(perfLogMeta(t), AlertMeta{Event: "NORMAL", Name: t.Name}.FallbackText(),
 			fmt.Sprintf("%d/%d successful checks", streak, threshold))
 		return nil
 	}
