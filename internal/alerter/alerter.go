@@ -693,7 +693,7 @@ func (a *Alerter) renderAlertEmail(meta AlertMeta) string {
 		field1Value = dt
 		field1Color = "#f4f7fb"
 	}
-	showMsg := meta.Message != "" && meta.Event != "RECOVERY" && meta.Event != "NORMAL" && meta.ResponseLabel() != "Timeout"
+	showMsg := meta.Message != "" && meta.Event != "NORMAL" && meta.ResponseLabel() != "Timeout"
 	dns := ParseDNSChangeMessage(meta.Message)
 	svcRows := ParseHostServiceMessage(meta.Message)
 	var dnsSections []emailDNSSection

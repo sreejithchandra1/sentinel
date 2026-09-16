@@ -16,7 +16,7 @@ var hostServicePair = regexp.MustCompile(`([A-Za-z0-9:_.\\@-]+)\s*\(([^)]+)\)`)
 
 func ParseHostServiceMessage(msg string) []HostServiceRow {
 	msg = strings.TrimSpace(msg)
-	if msg == "" {
+	if msg == "" || !strings.Contains(strings.ToLower(msg), "watched services") {
 		return nil
 	}
 	matches := hostServicePair.FindAllStringSubmatch(msg, -1)
