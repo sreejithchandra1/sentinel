@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { api, Incident } from '../api'
+import { api, Incident, incidentSubjectPath, isHostIncident } from '../api'
 import { incidentLifecycleLabel } from '../components/IncidentStatus'
 import PageHeader from '../components/PageHeader'
 import Panel from '../components/Panel'
@@ -125,9 +125,9 @@ export default function IncidentDetail() {
             value={incident.resolved_at ? new Date(incident.resolved_at).toLocaleString() : '—'}
           />
           <div style={styles.row}>
-            <dt style={styles.dt}>Monitor</dt>
+            <dt style={styles.dt}>{isHostIncident(incident.type) ? 'Host' : 'Monitor'}</dt>
             <dd style={styles.dd}>
-              <Link to={`/monitors/${incident.monitor_id}`} style={styles.link}>
+              <Link to={incidentSubjectPath(incident)} style={styles.link}>
                 {incident.monitor_name || incident.monitor_id}
               </Link>
             </dd>

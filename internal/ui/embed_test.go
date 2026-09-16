@@ -10,7 +10,7 @@ import (
 
 func TestSPA_servesIndexForClientRoutes(t *testing.T) {
 	h := Handler()
-	for _, path := range []string{"/reset-password", "/login", "/monitors/abc", "/performance/xyz"} {
+	for _, path := range []string{"/reset-password", "/login", "/monitors/abc", "/performance/xyz", "/hosts", "/hosts/abc"} {
 		t.Run(path, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, path+"?token=abc", nil)
 			rec := httptest.NewRecorder()

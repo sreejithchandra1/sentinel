@@ -48,7 +48,7 @@ export default function MetricCard({
         {value}
       </div>
       {sub && (
-        <div style={{ fontSize: 14, color: colors.textMuted, marginTop: 6 }}>
+        <div style={{ fontSize: 14, color: accent === 'default' ? colors.textMuted : accentColor, marginTop: 6 }}>
           {sub}
         </div>
       )}

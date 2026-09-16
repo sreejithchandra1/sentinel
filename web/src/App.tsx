@@ -11,6 +11,8 @@ import PerformanceDetail from './pages/PerformanceDetail'
 import PerformanceForm from './pages/PerformanceForm'
 import MonitorDetail from './pages/MonitorDetail'
 import MonitorForm from './pages/MonitorForm'
+import Hosts from './pages/Hosts'
+import HostDetail from './pages/HostDetail'
 import SettingsLayout from './pages/settings/SettingsLayout'
 import SettingsGeneral from './pages/settings/SettingsGeneral'
 import SettingsSMTP from './pages/settings/SettingsSMTP'
@@ -92,6 +94,8 @@ export default function App() {
           <Route path="/monitors/new" element={<AdminRoute><MonitorForm /></AdminRoute>} />
           <Route path="/monitors/:id" element={<MonitorDetail />} />
           <Route path="/monitors/:id/edit" element={<AdminRoute><MonitorForm /></AdminRoute>} />
+          <Route path="/hosts" element={<Hosts />} />
+          <Route path="/hosts/:id" element={<HostDetail />} />
           <Route path="/customers" element={<PlatformAdminRoute><SettingsCustomers /></PlatformAdminRoute>} />
           <Route path="/users" element={<AdminRoute><SettingsTeam /></AdminRoute>} />
           <Route path="/settings/customers" element={<Navigate to="/customers" replace />} />

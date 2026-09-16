@@ -18,6 +18,7 @@ export const iconSizes = {
 /** Public URL paths — drop replacement files in web/public/icons/ */
 export const icons = {
   monitors: '/icons/monitors.svg',
+  hosts: '/icons/hosts.svg',
   incidents: '/icons/incidents.svg',
   sla: '/icons/sla.svg',
   performance: '/icons/performance.svg',

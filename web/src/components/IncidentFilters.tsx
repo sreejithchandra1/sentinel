@@ -10,6 +10,17 @@ const TYPE_OPTIONS = [
   { value: 'cert_change', label: 'Cert change' },
   { value: 'dns_change', label: 'DNS change' },
   { value: 'slow', label: 'Slow' },
+  { value: 'host_offline', label: 'Host offline' },
+  { value: 'host_cpu', label: 'Host CPU' },
+  { value: 'host_memory', label: 'Host memory' },
+  { value: 'host_swap', label: 'Host swap' },
+  { value: 'host_disk', label: 'Host disk' },
+  { value: 'host_load', label: 'Host load' },
+  { value: 'host_iowait', label: 'Host I/O wait' },
+  { value: 'host_auth', label: 'Host auth failures' },
+  { value: 'host_root_login', label: 'Host root login' },
+  { value: 'host_reboot', label: 'Host reboot required' },
+  { value: 'host_service', label: 'Host service' },
 ]
 
 export type IncidentFilterValues = {

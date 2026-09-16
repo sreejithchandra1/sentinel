@@ -5,6 +5,9 @@ const labels: Record<string, string> = {
   down: 'Down',
   degraded: 'Warning',
   unknown: 'Unknown',
+  pending: 'Waiting',
+  online: 'Online',
+  offline: 'Offline',
   critical: 'Critical',
   paused: 'Paused',
 }
@@ -15,6 +18,9 @@ const statusStyles: Record<string, { bg: string; text: string; dot: string }> = 
   degraded: { bg: colors.yellowDim, text: colors.yellow, dot: colors.yellow },
   critical: { bg: colors.redDim, text: colors.red, dot: colors.red },
   paused: { bg: 'rgba(156,163,175,0.12)', text: colors.textMuted, dot: colors.textMuted },
+  pending: { bg: 'rgba(156,163,175,0.12)', text: colors.textMuted, dot: colors.textMuted },
+  online: { bg: colors.greenDim, text: colors.green, dot: colors.green },
+  offline: { bg: colors.redDim, text: colors.red, dot: colors.red },
   unknown: { bg: 'rgba(156,163,175,0.12)', text: colors.textMuted, dot: colors.textMuted },
 }
 

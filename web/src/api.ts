@@ -355,6 +355,127 @@ export interface Incident {
   acknowledged_by?: string
 }
 
+export type HostStatus = 'pending' | 'online' | 'offline'
+
+export interface HostDisk {
+  mount: string
+  percent: number
+  total_bytes?: number
+  used_bytes?: number
+  free_bytes?: number
+}
+
+export interface HostServiceStatus {
+  name: string
+  active: string
+  sub?: string
+}
+
+export interface HostSecurity {
+  logs_readable: boolean
+  ssh_failed_5m: number
+  sudo_failed_5m: number
+  auth_failed_5m: number
+  root_logins_5m: number
+  last_root_login?: string
+}
+
+export interface Host {
+  id: string
+  name: string
+  hostname: string
+  tenant_id?: string
+  os?: string
+  os_version?: string
+  kernel_version?: string
+  arch?: string
+  agent_version?: string
+  num_cpu?: number
+  uptime_seconds: number
+  reboot_required?: boolean
+  last_seen_at?: string
+  status: HostStatus
+  enabled: boolean
+  interval_seconds: number
+  alert_after_failures: number
+  consecutive_misses: number
+  collect_cpu: boolean
+  collect_memory: boolean
+  collect_disk: boolean
+  collect_load: boolean
+  collect_swap: boolean
+  collect_iowait: boolean
+  collect_security: boolean
+  collect_services: boolean
+  alert_cpu_enabled: boolean
+  alert_cpu_warning: number
+  alert_cpu_threshold: number
+  alert_cpu_after: number
+  alert_memory_enabled: boolean
+  alert_memory_warning: number
+  alert_memory_threshold: number
+  alert_memory_after: number
+  alert_disk_enabled: boolean
+  alert_disk_warning: number
+  alert_disk_threshold: number
+  alert_disk_after: number
+  alert_load_enabled: boolean
+  alert_load_warning: number
+  alert_load_threshold: number
+  alert_load_after: number
+  alert_swap_enabled: boolean
+  alert_swap_warning: number
+  alert_swap_threshold: number
+  alert_swap_after: number
+  alert_iowait_enabled: boolean
+  alert_iowait_warning: number
+  alert_iowait_threshold: number
+  alert_iowait_after: number
+  alert_auth_enabled: boolean
+  alert_auth_threshold: number
+  alert_root_login_enabled: boolean
+  alert_reboot_enabled: boolean
+  alert_service_enabled: boolean
+  services?: string[]
+  disks?: HostDisk[]
+  service_status?: HostServiceStatus[]
+  security?: HostSecurity
+  alert_emails: string
+  notify_email: boolean
+  notify_slack: boolean
+  notify_webhooks: boolean
+  created_at: string
+  updated_at: string
+  enroll_token?: string
+  install_command?: string
+  enroll_expires_at?: string
+}
+
+export interface HostStatsPoint {
+  timestamp: string
+  cpu_percent?: number
+  mem_percent?: number
+  swap_percent?: number
+  iowait_percent?: number
+  load1?: number
+  disk_percent?: number
+  disks?: HostDisk[]
+  num_cpu?: number
+}
+
+export interface HostStats {
+  host_id: string
+  points: HostStatsPoint[]
+}
+
+export function isHostIncident(type?: string): boolean {
+  return (type || '').startsWith('host_')
+}
+
+export function incidentSubjectPath(inc: { type: string; monitor_id: string }): string {
+  return isHostIncident(inc.type) ? `/hosts/${inc.monitor_id}` : `/monitors/${inc.monitor_id}`
+}
+
 export interface SLAMonitorRow {
   monitor_id: string
   name: string
@@ -551,6 +672,20 @@ export const api = {
   },
   performanceStats: (id: string, period = '24h') =>
     request<PerformanceStats>(`/api/performance/targets/${id}/stats?period=${period}`),
+  hosts: (customer?: string) =>
+    request<Host[]>(customer ? `/api/hosts?customer=${encodeURIComponent(customer)}` : '/api/hosts'),
+  getHost: (id: string) => request<Host>(`/api/hosts/${id}`),
+  createHost: (data: Partial<Host>) =>
+    request<Host>('/api/hosts', { method: 'POST', body: JSON.stringify(data) }),
+  updateHost: (id: string, data: Partial<Host>) =>
+    request<Host>(`/api/hosts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  setHostEnabled: (id: string, enabled: boolean) =>
+    request<Host>(`/api/hosts/${id}/enabled`, { method: 'PUT', body: JSON.stringify({ enabled }) }),
+  deleteHost: (id: string) => request(`/api/hosts/${id}`, { method: 'DELETE' }),
+  enrollHost: (id: string) =>
+    request<Host>(`/api/hosts/${id}/enroll`, { method: 'POST' }),
+  hostStats: (id: string, period = '24h') =>
+    request<HostStats>(`/api/hosts/${id}/stats?period=${period}`),
   listCustomers: () => request<Customer[]>('/api/settings/customers'),
   createCustomer: (data: { name: string; monitor_quota?: number; alert_emails?: string }) =>
     request<Customer>('/api/settings/customers', { method: 'POST', body: JSON.stringify(data) }),

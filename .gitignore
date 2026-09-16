@@ -7,5 +7,8 @@ web/node_modules/
 web/dist/
 internal/ui/dist/*
 !internal/ui/dist/.gitkeep
+internal/agentbin/files/linux-amd64
+internal/agentbin/files/linux-arm64
 config.yaml
 .DS_Store
+.cursor/

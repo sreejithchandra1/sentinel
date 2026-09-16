@@ -22,7 +22,7 @@ func TestWebhookMatchesEvent(t *testing.T) {
 
 func TestFormatSlackFallbackStillReadable(t *testing.T) {
 	meta := AlertMeta{Event: "DOWN", Name: "Example", URL: "https://example.com", Message: "boom", ResponseMs: 12}
-	if !strings.Contains(meta.FallbackText(), "DOWN: Example") {
+	if !strings.Contains(meta.FallbackText(), "Outage Detected: Example") {
 		t.Fatalf("fallback=%q", meta.FallbackText())
 	}
 }
