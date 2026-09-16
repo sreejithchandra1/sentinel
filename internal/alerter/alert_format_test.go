@@ -17,8 +17,11 @@ func TestAlertMetaLabels(t *testing.T) {
 		EventAt:    started.Add(2*time.Minute + 14*time.Second),
 		StartedAt:  &started,
 	}
-	if meta.Title() != "MONITOR RECOVERED" {
+	if meta.Title() != "Recovered after 2 minutes" {
 		t.Fatalf("title=%q", meta.Title())
+	}
+	if meta.FallbackText() != "Recovered after 2 minutes: Google" {
+		t.Fatalf("fallback=%q", meta.FallbackText())
 	}
 	if meta.DowntimeLabel() != "2m 14s" {
 		t.Fatalf("downtime=%q", meta.DowntimeLabel())
@@ -28,6 +31,39 @@ func TestAlertMetaLabels(t *testing.T) {
 	}
 	if meta.ResponseLabel() != "168ms" {
 		t.Fatalf("response=%q", meta.ResponseLabel())
+	}
+
+	down := AlertMeta{Event: "DOWN", Name: "Test"}
+	if down.Title() != "Outage Detected" {
+		t.Fatalf("down title=%q", down.Title())
+	}
+	if down.FallbackText() != "Outage Detected: Test" {
+		t.Fatalf("down fallback=%q", down.FallbackText())
+	}
+}
+
+func TestFormatRecoveredAfter(t *testing.T) {
+	cases := []struct {
+		d    time.Duration
+		want string
+	}{
+		{5 * time.Second, "Recovered after 1 minute"},
+		{time.Minute + 5*time.Second, "Recovered after 1 minute"},
+		{2*time.Minute + 14*time.Second, "Recovered after 2 minutes"},
+		{59 * time.Minute, "Recovered after 59 minutes"},
+		{time.Hour, "Recovered after 1 hour"},
+		{90 * time.Minute, "Recovered after 2 hours"},
+		{3 * time.Hour, "Recovered after 3 hours"},
+	}
+	for _, tc := range cases {
+		if got := formatRecoveredAfter(tc.d); got != tc.want {
+			t.Fatalf("formatRecoveredAfter(%v)=%q, want %q", tc.d, got, tc.want)
+		}
+	}
+
+	recovery := AlertMeta{Event: "RECOVERY", Name: "Test"}
+	if recovery.Title() != "Recovered" {
+		t.Fatalf("recovery without duration title=%q", recovery.Title())
 	}
 }
 
@@ -57,7 +93,7 @@ func TestBuildSlackPayload(t *testing.T) {
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(payload["text"].(string), "DOWN: Google") {
+	if !strings.Contains(payload["text"].(string), "Outage Detected: Google") {
 		t.Fatalf("fallback text=%v", payload["text"])
 	}
 	atts := payload["attachments"].([]any)
@@ -230,9 +266,32 @@ func TestRenderAlertEmail(t *testing.T) {
 		IncidentID:   "deadbeef",
 		EventAt:      time.Now().UTC(),
 	})
-	for _, want := range []string{"MONITOR DOWN", "Google", "https://www.google.com/", "INC-DEADBEEF", "Open in Sentinel", "#E01E5A"} {
+	for _, want := range []string{"Outage Detected", "Google", "https://www.google.com/", "INC-DEADBEEF", "Open in Sentinel", "#E01E5A"} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("missing %q in email html", want)
 		}
+	}
+}
+
+func TestRenderAlertEmailRecovery(t *testing.T) {
+	started := time.Date(2026, 9, 16, 9, 23, 0, 0, time.UTC)
+	a := &Alerter{}
+	html := a.renderAlertEmail(AlertMeta{
+		Event:        "RECOVERY",
+		Name:         "Test",
+		URL:          "https://www.google.com/",
+		DashboardURL: "http://localhost/monitors/1",
+		ResponseMs:   114,
+		IncidentID:   "d0b87b35",
+		EventAt:      started.Add(time.Minute + 5*time.Second),
+		StartedAt:    &started,
+	})
+	for _, want := range []string{"Recovered after 1 minute", "Test", "1m 5s"} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("missing %q in recovery email html", want)
+		}
+	}
+	if strings.Contains(html, "[Sentinel]") || strings.Contains(html, "MONITOR RECOVERED") {
+		t.Fatal("recovery email still uses old copy")
 	}
 }

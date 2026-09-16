@@ -190,7 +190,7 @@ func (a *Alerter) HandleResult(m *models.Monitor, result *models.CheckResult) er
 			}
 			m.LastStatus = models.StatusDown
 			log.Printf("alerter: recovery pending for %s: %d/%d successful checks", m.Name, streak, threshold)
-			a.recordEmailPending(alertLogMeta(m), recoverySubject(m.Name),
+			a.recordEmailPending(alertLogMeta(m), recoverySubject(m.Name, &open.StartedAt, result.CheckedAt),
 				fmt.Sprintf("%d/%d successful checks", streak, threshold))
 			return nil
 		}

@@ -32,9 +32,9 @@ func (m AlertMeta) Title() string {
 	var title string
 	switch strings.ToUpper(strings.TrimSpace(m.Event)) {
 	case "DOWN":
-		title = "MONITOR DOWN"
+		title = "Outage Detected"
 	case "RECOVERY":
-		title = "MONITOR RECOVERED"
+		title = m.recoveredAfterTitle()
 	case "SLOW":
 		title = "PERFORMANCE SLOW"
 	case "NORMAL":
@@ -176,15 +176,8 @@ func (m AlertMeta) TimeFieldLabel() string {
 }
 
 func (m AlertMeta) DowntimeLabel() string {
-	if m.StartedAt == nil {
-		return ""
-	}
-	end := m.EventAt
-	if end.IsZero() {
-		end = time.Now().UTC()
-	}
-	d := end.Sub(*m.StartedAt)
-	if d < 0 {
+	d, ok := m.downtimeDuration()
+	if !ok {
 		return ""
 	}
 	return formatShortDuration(d)
@@ -195,7 +188,64 @@ func (m AlertMeta) FallbackText() string {
 	if name == "" {
 		name = "monitor"
 	}
-	return fmt.Sprintf("[Sentinel] %s: %s", strings.ToUpper(m.Event), name)
+	switch strings.ToUpper(strings.TrimSpace(m.Event)) {
+	case "DOWN":
+		return "Outage Detected: " + name
+	case "RECOVERY":
+		return m.recoveredAfterTitle() + ": " + name
+	default:
+		return fmt.Sprintf("%s: %s", strings.ToUpper(m.Event), name)
+	}
+}
+
+func (m AlertMeta) downtimeDuration() (time.Duration, bool) {
+	if m.StartedAt == nil {
+		return 0, false
+	}
+	end := m.EventAt
+	if end.IsZero() {
+		end = time.Now().UTC()
+	}
+	d := end.Sub(*m.StartedAt)
+	if d < 0 {
+		return 0, false
+	}
+	return d, true
+}
+
+func (m AlertMeta) recoveredAfterTitle() string {
+	d, ok := m.downtimeDuration()
+	if !ok {
+		return "Recovered"
+	}
+	return formatRecoveredAfter(d)
+}
+
+func formatRecoveredAfter(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	if d >= time.Hour {
+		hours := int(d.Round(time.Hour) / time.Hour)
+		if hours < 1 {
+			hours = 1
+		}
+		if hours == 1 {
+			return "Recovered after 1 hour"
+		}
+		return fmt.Sprintf("Recovered after %d hours", hours)
+	}
+	minutes := int(d.Round(time.Minute) / time.Minute)
+	if minutes < 1 {
+		minutes = 1
+	}
+	if minutes >= 60 {
+		return "Recovered after 1 hour"
+	}
+	if minutes == 1 {
+		return "Recovered after 1 minute"
+	}
+	return fmt.Sprintf("Recovered after %d minutes", minutes)
 }
 
 func formatShortDuration(d time.Duration) string {
