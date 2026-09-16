@@ -19,6 +19,8 @@ import (
 	"github.com/sentinel-monitoring/sentinel/internal/models"
 )
 
+const agentUserAgent = "Sentinel-Agent/" + models.HostAgentVersion
+
 type agentConfig struct {
 	ServerURL string `yaml:"server_url"`
 	Token     string `yaml:"token"`
@@ -131,6 +133,7 @@ func ingest(client *http.Client, cfg *agentConfig, payload *models.HostIngestPay
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+cfg.Token)
+	req.Header.Set("User-Agent", agentUserAgent)
 	resp, err := client.Do(req)
 	if err != nil {
 		return models.HostAgentConfig{}, err
