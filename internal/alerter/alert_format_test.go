@@ -65,6 +65,21 @@ func TestFormatRecoveredAfter(t *testing.T) {
 	if recovery.Title() != "Recovered" {
 		t.Fatalf("recovery without duration title=%q", recovery.Title())
 	}
+
+	started := time.Date(2026, 9, 16, 12, 13, 0, 0, time.UTC)
+	disk := AlertMeta{
+		Event:          "RECOVERY",
+		Name:           "host",
+		EventAt:        started.Add(13 * time.Minute),
+		StartedAt:      &started,
+		RecoveredLabel: "Disk usage",
+	}
+	if disk.Title() != "Disk usage recovered after 13 minutes" {
+		t.Fatalf("disk recovery title=%q", disk.Title())
+	}
+	if disk.FallbackText() != "Disk usage recovered after 13 minutes: host" {
+		t.Fatalf("disk recovery fallback=%q", disk.FallbackText())
+	}
 }
 
 func TestAlertMetaTimeoutLabel(t *testing.T) {
@@ -254,6 +269,37 @@ func TestBuildSlackPayloadHostDiskWarning(t *testing.T) {
 	}
 }
 
+func TestBuildSlackPayloadHostDiskRecovery(t *testing.T) {
+	started := time.Date(2026, 9, 16, 12, 13, 0, 0, time.UTC)
+	raw, err := buildSlackPayload(AlertMeta{
+		Event:          "RECOVERY",
+		Name:           "2hats-prod-internal",
+		URL:            "server.buildsite.in",
+		Message:        "Disk recovered: 64.1% (below 75.0%) [/ 64%, /tmp 64%, /var/tmp 64%]",
+		DashboardURL:   "http://localhost/hosts/1",
+		IncidentID:     "6c88c572",
+		EventAt:        started.Add(13 * time.Minute),
+		StartedAt:      &started,
+		RecoveredLabel: "Disk usage",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	for _, want := range []string{
+		"Disk usage recovered after 13 minutes: 2hats-prod-internal",
+		"Disk usage recovered after 13 minutes",
+		"Disk recovered: 64.1%",
+	} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("missing %q in slack recovery payload: %s", want, s)
+		}
+	}
+	if strings.Contains(s, "*Services*") {
+		t.Fatal("disk recovery must not render a Slack services table")
+	}
+}
+
 func TestRenderAlertEmail(t *testing.T) {
 	a := &Alerter{}
 	html := a.renderAlertEmail(AlertMeta{
@@ -293,5 +339,29 @@ func TestRenderAlertEmailRecovery(t *testing.T) {
 	}
 	if strings.Contains(html, "[Sentinel]") || strings.Contains(html, "MONITOR RECOVERED") {
 		t.Fatal("recovery email still uses old copy")
+	}
+}
+
+func TestRenderAlertEmailHostDiskRecovery(t *testing.T) {
+	started := time.Date(2026, 9, 16, 12, 13, 0, 0, time.UTC)
+	a := &Alerter{}
+	html := a.renderAlertEmail(AlertMeta{
+		Event:          "RECOVERY",
+		Name:           "2hats-prod-internal",
+		URL:            "server.buildsite.in",
+		Message:        "Disk recovered: 64.1% (below 75.0%) [/ 64%, /tmp 64%, /var/tmp 64%]",
+		DashboardURL:   "http://localhost/hosts/1",
+		IncidentID:     "6c88c572",
+		EventAt:        started.Add(13 * time.Minute),
+		StartedAt:      &started,
+		RecoveredLabel: "Disk usage",
+	})
+	for _, want := range []string{"Disk usage recovered after 13 minutes", "Disk recovered: 64.1%", "2hats-prod-internal"} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("missing %q in host disk recovery html", want)
+		}
+	}
+	if strings.Contains(html, ">Service<") || strings.Contains(html, ">Services<") {
+		t.Fatal("disk recovery must not render a services table")
 	}
 }

@@ -38,7 +38,7 @@ func buildSlackPayload(meta AlertMeta) ([]byte, error) {
 		bodyText += fmt.Sprintf("\n<%s|%s>", meta.URL, meta.URL)
 	}
 	ev := strings.ToUpper(meta.Event)
-	if meta.Message != "" && ev != "RECOVERY" && ev != "NORMAL" {
+	if meta.Message != "" && ev != "NORMAL" {
 		if meta.ResponseLabel() != "Timeout" {
 			if dns := ParseDNSChangeMessage(meta.Message); dns != nil {
 				bodyText += "\n" + formatSlackDNSChanges(dns)

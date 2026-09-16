@@ -98,11 +98,12 @@ func (a *Alerter) HandleHostIngestOnline(h *models.Host, now time.Time) error {
 	started := open.StartedAt
 	_ = a.store.ResolveOpenIncidents(h.ID, models.IncidentHostOffline, now)
 	return hostNotify(a, h, AlertMeta{
-		Event:      "RECOVERY",
-		Message:    "Host agent is reporting again",
-		IncidentID: open.ID,
-		EventAt:    now,
-		StartedAt:  &started,
+		Event:          "RECOVERY",
+		Message:        "Host agent is reporting again",
+		IncidentID:     open.ID,
+		EventAt:        now,
+		StartedAt:      &started,
+		RecoveredLabel: "Host",
 	})
 }
 
@@ -274,11 +275,12 @@ func (a *Alerter) evalHostFlag(h *models.Host, sample *models.HostSample, metric
 		started := open.StartedAt
 		_ = a.store.ResolveOpenIncidents(h.ID, incType, sample.CollectedAt)
 		return hostNotify(a, h, AlertMeta{
-			Event:      "RECOVERY",
-			Message:    "Recovered: " + msg,
-			IncidentID: open.ID,
-			EventAt:    sample.CollectedAt,
-			StartedAt:  &started,
+			Event:          "RECOVERY",
+			Message:        "Recovered: " + msg,
+			IncidentID:     open.ID,
+			EventAt:        sample.CollectedAt,
+			StartedAt:      &started,
+			RecoveredLabel: hostRecoveredLabel(event, ""),
 		})
 	}
 	if open != nil {
@@ -389,14 +391,38 @@ func (a *Alerter) evalHostGauge(
 		started := open.StartedAt
 		_ = a.store.ResolveOpenIncidents(h.ID, incType, sample.CollectedAt)
 		return hostNotify(a, h, AlertMeta{
-			Event:      "RECOVERY",
-			Message:    fmt.Sprintf("%s recovered (%.1f%s below %.1f%s)", label, value, unit, recoverBelow, unit),
-			IncidentID: open.ID,
-			EventAt:    sample.CollectedAt,
-			StartedAt:  &started,
+			Event:          "RECOVERY",
+			Message:        fmt.Sprintf("%s recovered: %.1f%s (below %.1f%s)%s", label, value, unit, recoverBelow, unit, extra),
+			IncidentID:     open.ID,
+			EventAt:        sample.CollectedAt,
+			StartedAt:      &started,
+			RecoveredLabel: hostRecoveredLabel(event, label),
 		})
 	default:
 		state.ConsecutiveHigh = 0
 		return a.store.UpsertHostAlertState(state)
+	}
+}
+
+func hostRecoveredLabel(event, gaugeLabel string) string {
+	if strings.TrimSpace(gaugeLabel) != "" {
+		if gaugeLabel == "Disk" {
+			return "Disk usage"
+		}
+		return gaugeLabel
+	}
+	switch strings.ToUpper(strings.TrimSpace(event)) {
+	case "HOST_SERVICE":
+		return "Services"
+	case "HOST_AUTH":
+		return "Auth failures"
+	case "HOST_ROOT_LOGIN":
+		return "Root login"
+	case "HOST_REBOOT":
+		return "Reboot required"
+	case "HOST_OFFLINE":
+		return "Host"
+	default:
+		return ""
 	}
 }

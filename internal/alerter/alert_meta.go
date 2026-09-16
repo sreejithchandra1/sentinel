@@ -24,6 +24,9 @@ type AlertMeta struct {
 	IncidentID   string
 	EventAt      time.Time
 	StartedAt    *time.Time // for downtime on recovery
+	// RecoveredLabel names what came back (e.g. "Disk usage") so host recovery
+	// headlines are not just "Recovered after N minutes".
+	RecoveredLabel string
 	// Severity is "warning" or "critical" for host gauge alerts. Empty means infer from Message.
 	Severity string
 }
@@ -214,11 +217,18 @@ func (m AlertMeta) downtimeDuration() (time.Duration, bool) {
 }
 
 func (m AlertMeta) recoveredAfterTitle() string {
-	d, ok := m.downtimeDuration()
-	if !ok {
-		return "Recovered"
+	after := "Recovered"
+	if d, ok := m.downtimeDuration(); ok {
+		after = formatRecoveredAfter(d)
 	}
-	return formatRecoveredAfter(d)
+	label := strings.TrimSpace(m.RecoveredLabel)
+	if label == "" {
+		return after
+	}
+	if strings.HasPrefix(after, "Recovered after ") {
+		return label + " recovered after " + strings.TrimPrefix(after, "Recovered after ")
+	}
+	return label + " recovered"
 }
 
 func formatRecoveredAfter(d time.Duration) string {

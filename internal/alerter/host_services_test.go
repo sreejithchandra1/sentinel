@@ -15,6 +15,9 @@ func TestParseHostServiceMessage(t *testing.T) {
 	if len(got) != 2 || got[0].Name != "nginx" || got[0].Status != "missing" || got[1].Name != "sshd" {
 		t.Fatalf("got %#v", got)
 	}
+	if rows := ParseHostServiceMessage("Disk recovered: 64.1% (below 75.0%)"); len(rows) != 0 {
+		t.Fatalf("disk recovery must not parse as services, got %#v", rows)
+	}
 }
 
 func TestRenderAlertEmailHostServices(t *testing.T) {
