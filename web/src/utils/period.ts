@@ -24,21 +24,19 @@ export type ChartTimeZone = 'utc' | 'local'
 export const CHART_PERIOD_PRESETS: { id: string; label: string; name: string }[] = [
   { id: '15m', label: '15m', name: 'Last 15 minutes' },
   { id: '1h', label: '1h', name: 'Last 1 hour' },
-  { id: '6h', label: '6h', name: 'Last 6 hours' },
+  { id: '3h', label: '3h', name: 'Last 3 hours' },
   { id: '24h', label: '24h', name: 'Last 24 hours' },
   { id: '7d', label: '7d', name: 'Last 7 days' },
-  { id: '30d', label: '30d', name: 'Last 30 days' },
-  { id: '90d', label: '90d', name: 'Last 90 days' },
 ]
 
 export const DEFAULT_CHART_RANGE: ChartRange = { kind: 'relative', period: '24h' }
 
 export const MIN_RANGE_MS = 60 * 1000
 export const MAX_RANGE_MS = 366 * 24 * 60 * 60 * 1000
-/** Smallest window wheel / zoom buttons will use — matches the 15m preset. */
+/** Smallest window wheel zoom will use — matches the 15m preset. */
 export const MIN_ZOOM_MS = 15 * 60 * 1000
-/** Largest window wheel / zoom buttons will use — matches the 90d preset. */
-export const MAX_ZOOM_MS = 90 * 24 * 60 * 60 * 1000
+/** Largest window wheel zoom will use — matches the 7d preset. */
+export const MAX_ZOOM_MS = 7 * 24 * 60 * 60 * 1000
 
 export function parsePeriod(period: string): ParsedPeriod {
   const m = PERIOD_RE.exec(period.trim())
