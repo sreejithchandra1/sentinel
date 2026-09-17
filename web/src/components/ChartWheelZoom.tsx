@@ -5,6 +5,13 @@ const WHEEL_MS = 70
 const ZOOM_IN = 0.7
 const ZOOM_OUT = 1.45
 
+function plotRatio(node: HTMLElement, clientX: number): number {
+  const plot = node.querySelector('.recharts-cartesian-grid')
+  const rect = (plot instanceof Element ? plot : node).getBoundingClientRect()
+  if (rect.width <= 0) return 0.5
+  return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
+}
+
 export default function ChartWheelZoom({
   range,
   onChange,
@@ -35,8 +42,7 @@ export default function ChartWheelZoom({
       const now = Date.now()
       if (now - lastRef.current < WHEEL_MS) return
       lastRef.current = now
-      const rect = node.getBoundingClientRect()
-      const ratio = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0.5
+      const ratio = plotRatio(node, e.clientX)
       const factor = e.deltaY < 0 ? ZOOM_IN : ZOOM_OUT
       const next = zoomChartRange(rangeRef.current, factor, now, ratio)
       if (chartRangesEqual(rangeRef.current, next)) return
