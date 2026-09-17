@@ -14,13 +14,14 @@ import NextCheckCountdown from '../components/NextCheckCountdown'
 import PageHeader from '../components/PageHeader'
 import Surface from '../components/Panel'
 import ChartTimeRange from '../components/ChartTimeRange'
+import ChartWheelZoom from '../components/ChartWheelZoom'
 import StatusBadge, { badgeStatusFor, isPaused } from '../components/StatusBadge'
 import TypeBadge from '../components/TypeBadge'
 import { useAuth } from '../context/AuthContext'
-import { chartGridStroke, chartTick, chartTooltipLabel, chartTooltipStyle } from '../chartTheme'
+import { chartGridStroke, chartTick, chartTimeTooltipLabel, chartTimeXAxis, chartTooltipLabel, chartTooltipStyle } from '../chartTheme'
 import { colors, fonts } from '../theme'
 import { formatDuration, incidentDurationSeconds } from '../utils/duration'
-import { DEFAULT_CHART_RANGE, formatChartTick, statsQuery, type ChartRange, type ChartTimeZone } from '../utils/period'
+import { DEFAULT_CHART_RANGE, emptyChartMessage, formatChartTick, statsQuery, type ChartRange, type ChartTimeZone } from '../utils/period'
 import { useAdaptivePoll } from '../utils/poll'
 
 export default function MonitorDetail() {
@@ -76,6 +77,7 @@ export default function MonitorDetail() {
   const type = monitor.type || 'http'
   const target = type === 'port' ? `${monitor.url}:${monitor.port}` : monitor.url
   const chartData = (stats?.points || []).map(p => ({
+    ts: new Date(p.timestamp).getTime(),
     time: formatChartTick(p.timestamp, range, timeZone),
     ms: p.response_time_ms,
   }))
@@ -114,10 +116,11 @@ export default function MonitorDetail() {
             <ChartTimeRange value={range} onChange={setRange} timeZone={timeZone} onTimeZoneChange={setTimeZone} />
           </div>
           <div style={{ height: 260 }}>
+            <ChartWheelZoom range={range} onChange={setRange}>
             {!stats ? (
               <div style={styles.emptyChart}>Loading history…</div>
             ) : chartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData}>
                   <defs>
                     <linearGradient id="fillInstrument" x1="0" y1="0" x2="0" y2="1">
@@ -126,18 +129,20 @@ export default function MonitorDetail() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid stroke={chartGridStroke} vertical={false} />
-                  <XAxis dataKey="time" tick={chartTick} axisLine={false} tickLine={false} />
+                  <XAxis {...chartTimeXAxis(range, timeZone)} />
                   <YAxis unit="ms" tick={chartTick} axisLine={false} tickLine={false} />
                   <Tooltip
                     contentStyle={chartTooltipStyle}
                     labelStyle={chartTooltipLabel}
+                    labelFormatter={chartTimeTooltipLabel(range, timeZone)}
                   />
                   <Area type="linear" dataKey="ms" stroke={colors.brand} fill="url(#fillInstrument)" strokeWidth={2} isAnimationActive={false} />
                 </AreaChart>
-              </ResponsiveContainer>
+                </ResponsiveContainer>
             ) : (
-              <div style={styles.emptyChart}>No data yet — waiting for first check</div>
+              <div style={styles.emptyChart}>{emptyChartMessage(range)}</div>
             )}
+            </ChartWheelZoom>
           </div>
         </Surface>
       )}

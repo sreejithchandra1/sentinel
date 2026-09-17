@@ -241,8 +241,8 @@ func (s *Server) handleGetHostStats(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	period := r.URL.Query().Get("period")
-	stats, err := s.store.GetHostStats(h.ID, periodSince(period))
+	win := parseStatsRange(r.URL.Query().Get("period"), r.URL.Query().Get("from"), r.URL.Query().Get("to"))
+	stats, err := s.store.GetHostStats(h.ID, win.From, win.To)
 	if err != nil {
 		jsonInternal(w, err)
 		return

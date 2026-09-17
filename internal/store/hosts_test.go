@@ -114,7 +114,7 @@ func TestHostCRUDAndEnroll(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	stats, err := st.GetHostStats(h.ID, now.Add(-time.Hour))
+	stats, err := st.GetHostStats(h.ID, now.Add(-time.Hour), now.Add(time.Minute))
 	if err != nil || len(stats.Points) != 1 || stats.Points[0].CPUPercent == nil {
 		t.Fatalf("stats: %v %+v", err, stats)
 	}

@@ -13,10 +13,11 @@ import NextCheckCountdown from '../components/NextCheckCountdown'
 import PageHeader from '../components/PageHeader'
 import Panel from '../components/Panel'
 import ChartTimeRange from '../components/ChartTimeRange'
-import { chartGridStroke, chartTick, chartTooltipLabel, chartTooltipStyle } from '../chartTheme'
+import ChartWheelZoom from '../components/ChartWheelZoom'
+import { chartGridStroke, chartTick, chartTimeTooltipLabel, chartTimeXAxis, chartTooltipLabel, chartTooltipStyle } from '../chartTheme'
 import { colors, radius } from '../theme'
 import { useAdaptivePoll } from '../utils/poll'
-import { DEFAULT_CHART_RANGE, formatChartTick, statsQuery, type ChartRange, type ChartTimeZone } from '../utils/period'
+import { DEFAULT_CHART_RANGE, emptyChartMessage, formatChartTick, statsQuery, type ChartRange, type ChartTimeZone } from '../utils/period'
 
 export default function PerformanceDetail() {
   const { isAdmin } = useAuth()
@@ -62,6 +63,7 @@ export default function PerformanceDetail() {
 
   const perf = stats?.performance
   const chartData = (stats?.points || []).map(p => ({
+    ts: new Date(p.timestamp).getTime(),
     time: formatChartTick(p.timestamp, range, timeZone),
     ms: p.response_time_ms,
     dns: p.dns_ms ?? 0,
@@ -138,8 +140,9 @@ export default function PerformanceDetail() {
           <ChartTimeRange value={range} onChange={setRange} timeZone={timeZone} onTimeZoneChange={setTimeZone} />
         </div>
         <div style={{ height: 300 }}>
+          <ChartWheelZoom range={range} onChange={setRange}>
           {chartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="svcGrad" x1="0" y1="0" x2="0" y2="1">
@@ -148,16 +151,17 @@ export default function PerformanceDetail() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid stroke={chartGridStroke} vertical={false} />
-                <XAxis dataKey="time" tick={chartTick} axisLine={false} tickLine={false} />
+                <XAxis {...chartTimeXAxis(range, timeZone)} />
                 <YAxis unit="ms" tick={chartTick} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={chartTooltipStyle} labelStyle={chartTooltipLabel} />
+                <Tooltip contentStyle={chartTooltipStyle} labelStyle={chartTooltipLabel} labelFormatter={chartTimeTooltipLabel(range, timeZone)} />
                 <ReferenceLine y={target.slow_threshold_ms} stroke={colors.yellow} strokeDasharray="4 4" label={{ value: 'SLA', fill: colors.yellow, fontSize: 12 }} />
                 <Area type="monotone" dataKey="ms" stroke={colors.brand} fill="url(#svcGrad)" strokeWidth={2} />
               </AreaChart>
-            </ResponsiveContainer>
+              </ResponsiveContainer>
           ) : (
-            <div style={styles.empty}>Collecting latency data…</div>
+            <div style={styles.empty}>{emptyChartMessage(range)}</div>
           )}
+          </ChartWheelZoom>
         </div>
       </Panel>
 
@@ -165,12 +169,13 @@ export default function PerformanceDetail() {
         <Panel style={{ marginBottom: 20 }}>
           <h3 className="panel-title">Timing Breakdown</h3>
           <div style={{ height: 280 }}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ChartWheelZoom range={range} onChange={setRange}>
+              <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData}>
                 <CartesianGrid stroke={chartGridStroke} vertical={false} />
-                <XAxis dataKey="time" tick={chartTick} axisLine={false} tickLine={false} />
+                <XAxis {...chartTimeXAxis(range, timeZone)} />
                 <YAxis unit="ms" tick={chartTick} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={chartTooltipStyle} labelStyle={chartTooltipLabel} />
+                <Tooltip contentStyle={chartTooltipStyle} labelStyle={chartTooltipLabel} labelFormatter={chartTimeTooltipLabel(range, timeZone)} />
                 <Legend wrapperStyle={{ fontSize: 13, color: colors.textMuted }} />
                 <Area type="monotone" dataKey="dns" stackId="1" stroke="#58a6ff" fill="#58a6ff" fillOpacity={0.6} name="DNS" />
                 <Area type="monotone" dataKey="tcp" stackId="1" stroke="#bc8cff" fill="#bc8cff" fillOpacity={0.6} name="TCP" />
@@ -178,7 +183,8 @@ export default function PerformanceDetail() {
                 <Area type="monotone" dataKey="ttfb" stackId="1" stroke={colors.brand} fill={colors.brand} fillOpacity={0.6} name="TTFB" />
                 <Area type="monotone" dataKey="download" stackId="1" stroke={colors.yellow} fill={colors.yellow} fillOpacity={0.5} name="Download" />
               </AreaChart>
-            </ResponsiveContainer>
+              </ResponsiveContainer>
+            </ChartWheelZoom>
           </div>
         </Panel>
       )}

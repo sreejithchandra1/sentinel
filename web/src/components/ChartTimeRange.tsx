@@ -3,12 +3,13 @@ import { createPortal } from 'react-dom'
 import {
   CHART_PERIOD_PRESETS,
   DEFAULT_CHART_RANGE,
-  MAX_RANGE_MS,
-  MIN_RANGE_MS,
+  MAX_ZOOM_MS,
+  MIN_ZOOM_MS,
   PERIOD_UNITS,
   autoGranularityLabel,
   formatPeriod,
   formatPeriodLabel,
+  formatRangeLabel,
   fromDateTimeInput,
   parsePeriod,
   resolveChartRange,
@@ -99,6 +100,7 @@ export default function ChartTimeRange({
   const [startLocal, setStartLocal] = useState(() => toDateTimeInput(resolved.from, timeZone))
   const [endLocal, setEndLocal] = useState(() => toDateTimeInput(resolved.to, timeZone))
   const [open, setOpen] = useState(false)
+  const [openFrom, setOpenFrom] = useState<'clock' | 'custom'>('clock')
   const wrapRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ top: 0, left: 0 })
@@ -134,6 +136,7 @@ export default function ChartTimeRange({
     if (!open) return
     place()
     const id = requestAnimationFrame(place)
+    menuRef.current?.focus({ preventScroll: true })
     return () => cancelAnimationFrame(id)
   }, [open])
 
@@ -162,11 +165,22 @@ export default function ChartTimeRange({
   const presetIds = new Set(CHART_PERIOD_PRESETS.map(p => p.id))
   const activePreset = value.kind === 'relative' && presetIds.has(value.period) ? value.period : ''
   const spanMs = resolved.spanMs
-  const canZoomIn = spanMs > MIN_RANGE_MS
-  const canZoomOut = spanMs < MAX_RANGE_MS
-  const relativeLabel = value.kind === 'relative'
+  const canZoomIn = spanMs > MIN_ZOOM_MS
+  const canZoomOut = spanMs < MAX_ZOOM_MS
+  const rangeLabel = value.kind === 'relative'
     ? (CHART_PERIOD_PRESETS.find(p => p.id === value.period)?.name || formatPeriodLabel(value.period))
-    : 'Custom range'
+    : formatRangeLabel(value)
+  const customOpen = open && openFrom === 'custom'
+  const clockOpen = open && openFrom === 'clock'
+
+  function toggleOpen(from: 'clock' | 'custom') {
+    setOpenFrom(from)
+    setOpen(v => (openFrom === from ? !v : true))
+  }
+
+  function preventFocusSteal(e: { preventDefault: () => void }) {
+    e.preventDefault()
+  }
 
   function applyRelative(e?: FormEvent) {
     e?.preventDefault()
@@ -181,25 +195,34 @@ export default function ChartTimeRange({
     const from = fromDateTimeInput(startLocal, timeZone)
     const to = fromDateTimeInput(endLocal, timeZone)
     if (!from || !to || new Date(to).getTime() <= new Date(from).getTime()) return
-    onChange({ kind: 'absolute', from, to })
+    let fromMs = new Date(from).getTime()
+    let toMs = new Date(to).getTime()
+    let span = toMs - fromMs
+    span = Math.min(MAX_ZOOM_MS, Math.max(MIN_ZOOM_MS, span))
+    const now = Date.now()
+    if (toMs > now) toMs = now
+    fromMs = toMs - span
+    onChange({ kind: 'absolute', from: new Date(fromMs).toISOString(), to: new Date(toMs).toISOString() })
     setOpen(false)
   }
 
   function pickRelative(period: string) {
     onChange({ kind: 'relative', period })
     setOpen(false)
+    const focused = document.activeElement
+    if (focused instanceof HTMLElement) focused.blur()
   }
 
   return (
     <div className="ctr" ref={wrapRef} aria-label={label}>
-      <div className="ctr-presets" role="tablist" aria-label="Quick range">
+      <div className="ctr-presets" role="group" aria-label="Quick range">
         {CHART_PERIOD_PRESETS.map(p => (
           <button
             key={p.id}
             type="button"
-            role="tab"
-            aria-selected={activePreset === p.id}
+            aria-pressed={activePreset === p.id}
             className={'ctr-preset' + (activePreset === p.id ? ' is-active' : '')}
+            onMouseDown={preventFocusSteal}
             onClick={() => pickRelative(p.id)}
           >
             {p.label}
@@ -209,13 +232,14 @@ export default function ChartTimeRange({
 
       <button
         type="button"
-        className={'ctr-trigger' + (value.kind === 'relative' ? ' is-active' : '')}
-        aria-expanded={open}
+        className={'ctr-trigger' + (clockOpen ? ' is-active' : '')}
+        aria-expanded={clockOpen}
         aria-haspopup="dialog"
-        onClick={() => setOpen(v => !v)}
+        onMouseDown={preventFocusSteal}
+        onClick={() => toggleOpen('clock')}
       >
         <IconClock />
-        <span>{relativeLabel}</span>
+        <span>{rangeLabel}</span>
         <IconChevron />
       </button>
 
@@ -223,9 +247,10 @@ export default function ChartTimeRange({
 
       <button
         type="button"
-        className={'ctr-trigger' + (value.kind === 'absolute' ? ' is-active' : '')}
-        aria-expanded={open}
-        onClick={() => setOpen(v => !v)}
+        className={'ctr-trigger' + (customOpen ? ' is-active' : '')}
+        aria-expanded={customOpen}
+        onMouseDown={preventFocusSteal}
+        onClick={() => toggleOpen('custom')}
       >
         <IconCalendar />
         Custom Range
@@ -235,6 +260,11 @@ export default function ChartTimeRange({
         className="input ctr-tz"
         aria-label="Time zone"
         value={timeZone}
+        onMouseDown={e => e.stopPropagation()}
+        onWheel={e => {
+          e.preventDefault()
+          e.stopPropagation()
+        }}
         onChange={e => setTimeZone(e.target.value as ChartTimeZone)}
       >
         <option value="utc">UTC</option>
@@ -246,6 +276,7 @@ export default function ChartTimeRange({
           ref={menuRef}
           className="ctr-popover"
           role="dialog"
+          tabIndex={-1}
           aria-label="Select time range"
           style={{ top: pos.top, left: pos.left }}
         >

@@ -35,6 +35,10 @@ export const DEFAULT_CHART_RANGE: ChartRange = { kind: 'relative', period: '24h'
 
 export const MIN_RANGE_MS = 60 * 1000
 export const MAX_RANGE_MS = 366 * 24 * 60 * 60 * 1000
+/** Smallest window wheel / zoom buttons will use — matches the 15m preset. */
+export const MIN_ZOOM_MS = 15 * 60 * 1000
+/** Largest window wheel / zoom buttons will use — matches the 90d preset. */
+export const MAX_ZOOM_MS = 90 * 24 * 60 * 60 * 1000
 
 export function parsePeriod(period: string): ParsedPeriod {
   const m = PERIOD_RE.exec(period.trim())
@@ -125,22 +129,66 @@ export function formatChartTick(iso: string, range: ChartRange, timeZone: ChartT
   return d.toLocaleDateString([], { month: 'short', day: 'numeric', ...tz })
 }
 
-export function zoomChartRange(range: ChartRange, factor: number, now = Date.now()): ChartRange {
-  const { from, spanMs } = resolveChartRange(range, now)
+export function chartTimeDomain(range: ChartRange, now = Date.now()): [number, number] {
+  const { from, to } = resolveChartRange(range, now)
+  return [from.getTime(), to.getTime()]
+}
+
+function spanToRelativePeriod(spanMs: number): string {
+  const span = Math.min(MAX_ZOOM_MS, Math.max(MIN_ZOOM_MS, spanMs))
+  if (span < 90 * 60 * 1000) return `${Math.max(15, Math.round(span / 60_000))}m`
+  if (span < 40 * 60 * 60 * 1000) return `${Math.max(1, Math.round(span / 3_600_000))}h`
+  if (span < 12 * 24 * 60 * 60 * 1000) return `${Math.max(1, Math.round(span / 86_400_000))}d`
+  const weeks = Math.round(span / (7 * 86_400_000))
+  if (weeks >= 1 && weeks <= 8) return `${weeks}w`
+  return `${Math.min(90, Math.max(1, Math.round(span / 86_400_000)))}d`
+}
+
+export function zoomChartRange(range: ChartRange, factor: number, now = Date.now(), anchorRatio = 0.5): ChartRange {
+  const resolved = resolveChartRange(range, now)
+  const { from, spanMs } = resolved
+  const zoomingIn = factor < 1
+  if (zoomingIn && spanMs <= MIN_ZOOM_MS) return range
+  if (!zoomingIn && spanMs >= MAX_ZOOM_MS) return range
+
   let nextSpan = Math.round(spanMs * factor)
-  nextSpan = Math.min(MAX_RANGE_MS, Math.max(MIN_RANGE_MS, nextSpan))
-  const mid = from.getTime() + spanMs / 2
-  let nextFrom = mid - nextSpan / 2
-  let nextTo = mid + nextSpan / 2
+  nextSpan = Math.min(MAX_ZOOM_MS, Math.max(MIN_ZOOM_MS, nextSpan))
+  if (Math.abs(nextSpan - spanMs) < 1000) return range
+
+  const live = range.kind === 'relative' || resolved.to.getTime() >= now - 5000
+  if (live) {
+    return { kind: 'relative', period: spanToRelativePeriod(nextSpan) }
+  }
+
+  const r = Math.min(1, Math.max(0, Number.isFinite(anchorRatio) ? anchorRatio : 0.5))
+  const anchor = from.getTime() + spanMs * r
+  let nextFrom = anchor - nextSpan * r
+  let nextTo = nextFrom + nextSpan
   if (nextTo > now) {
     nextTo = now
     nextFrom = nextTo - nextSpan
+  }
+  if (nextFrom < now - MAX_ZOOM_MS) {
+    nextFrom = now - MAX_ZOOM_MS
+    nextTo = Math.min(now, nextFrom + nextSpan)
   }
   return {
     kind: 'absolute',
     from: new Date(nextFrom).toISOString(),
     to: new Date(nextTo).toISOString(),
   }
+}
+
+export function chartRangesEqual(a: ChartRange, b: ChartRange): boolean {
+  if (a.kind !== b.kind) return false
+  if (a.kind === 'relative' && b.kind === 'relative') return a.period === b.period
+  if (a.kind === 'absolute' && b.kind === 'absolute') return a.from === b.from && a.to === b.to
+  return false
+}
+
+export function emptyChartMessage(range: ChartRange): string {
+  if (range.kind === 'absolute') return 'No data in this time range'
+  return 'No data yet — waiting for first check'
 }
 
 export function statsQuery(range: ChartRange): { period?: string; from?: string; to?: string } {

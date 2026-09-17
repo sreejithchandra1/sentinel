@@ -704,8 +704,8 @@ export const api = {
   deleteHost: (id: string) => request(`/api/hosts/${id}`, { method: 'DELETE' }),
   enrollHost: (id: string) =>
     request<Host>(`/api/hosts/${id}/enroll`, { method: 'POST' }),
-  hostStats: (id: string, period = '24h') =>
-    request<HostStats>(`/api/hosts/${id}/stats?period=${period}`),
+  hostStats: (id: string, win: StatsWindow | string = '24h') =>
+    request<HostStats>(`/api/hosts/${id}/stats?${statsQueryParams(win)}`),
   listCustomers: () => request<Customer[]>('/api/settings/customers'),
   createCustomer: (data: { name: string; monitor_quota?: number; alert_emails?: string }) =>
     request<Customer>('/api/settings/customers', { method: 'POST', body: JSON.stringify(data) }),

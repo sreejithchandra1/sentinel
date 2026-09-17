@@ -489,12 +489,13 @@ func (s *Store) InsertHostSample(sample *models.HostSample) error {
 	return err
 }
 
-func (s *Store) GetHostStats(hostID string, since time.Time) (*models.HostStats, error) {
+func (s *Store) GetHostStats(hostID string, from, to time.Time) (*models.HostStats, error) {
+	from, to = normalizeStatsBounds(from, to)
 	rows, err := s.db.Query(`
 		SELECT cpu_percent, mem_percent, swap_percent, iowait_percent, load1, disk_percent, disks_json, num_cpu, collected_at
-		FROM host_samples WHERE host_id = ? AND collected_at >= ?
+		FROM host_samples WHERE host_id = ? AND collected_at >= ? AND collected_at <= ?
 		ORDER BY collected_at ASC`,
-		hostID, formatTime(since),
+		hostID, formatTime(from), formatTime(to),
 	)
 	if err != nil {
 		return nil, err
@@ -545,33 +546,43 @@ func (s *Store) GetHostStats(hostID string, since time.Time) (*models.HostStats,
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	points = downsampleHostPoints(points, maxChartPoints)
+	points = bucketHostPoints(points, chartBucketDuration(to.Sub(from)))
 	if points == nil {
 		points = []models.HostStatsPoint{}
 	}
 	return &models.HostStats{HostID: hostID, Points: points}, nil
 }
 
-func downsampleHostPoints(points []models.HostStatsPoint, max int) []models.HostStatsPoint {
-	n := len(points)
-	if max <= 0 || n <= max {
+func bucketHostPoints(points []models.HostStatsPoint, bucketDur time.Duration) []models.HostStatsPoint {
+	if bucketDur <= 0 || len(points) == 0 {
 		return points
 	}
-	out := make([]models.HostStatsPoint, 0, max)
-	for i := 0; i < max; i++ {
-		start := i * n / max
-		end := (i + 1) * n / max
-		if end <= start {
+	out := make([]models.HostStatsPoint, 0, len(points))
+	var current models.HostStatsPoint
+	var currentKey int64
+	hasCurrent := false
+	flush := func() {
+		if hasCurrent {
+			out = append(out, current)
+			hasCurrent = false
+		}
+	}
+	for _, p := range points {
+		start := p.Timestamp.Truncate(bucketDur)
+		key := start.Unix()
+		p.Timestamp = start
+		if !hasCurrent || key != currentKey {
+			flush()
+			current = p
+			currentKey = key
+			hasCurrent = true
 			continue
 		}
-		best := points[start]
-		for _, p := range points[start:end] {
-			if hostPointPeak(p) > hostPointPeak(best) {
-				best = p
-			}
+		if hostPointPeak(p) > hostPointPeak(current) {
+			current = p
 		}
-		out = append(out, best)
 	}
+	flush()
 	return out
 }
 

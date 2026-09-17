@@ -910,6 +910,12 @@ input::-ms-clear {
   color: var(--muted);
 }
 
+.chart-wheel-zoom {
+  width: 100%;
+  height: 100%;
+  overscroll-behavior: contain;
+}
+
 .ctr {
   position: relative;
   display: flex;
@@ -954,6 +960,17 @@ input::-ms-clear {
   box-shadow: 0 0 0 1px var(--border);
 }
 
+.ctr-preset:focus,
+.ctr-trigger:focus {
+  outline: none;
+}
+
+.ctr-preset:focus-visible,
+.ctr-trigger:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
 .ctr-trigger {
   display: inline-flex;
   align-items: center;
@@ -989,6 +1006,10 @@ input::-ms-clear {
   padding: 0 28px 0 10px;
   font-size: 12px;
   font-weight: 600;
+}
+
+.ctr-popover:focus {
+  outline: none;
 }
 
 .ctr-popover {

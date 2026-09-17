@@ -10,14 +10,16 @@ import MetricCard from '../components/MetricCard'
 import HostMetricCard, { hostMetricIcons } from '../components/HostMetricCard'
 import PageHeader from '../components/PageHeader'
 import Panel from '../components/Panel'
+import ChartWheelZoom from '../components/ChartWheelZoom'
 import SegmentedTabs from '../components/SegmentedTabs'
 import StatusBadge, { isPaused } from '../components/StatusBadge'
 import { useAuth } from '../context/AuthContext'
-import { chartGridStroke, chartTick, chartTooltipLabel, chartTooltipStyle } from '../chartTheme'
+import { chartGridStroke, chartTick, chartTimeTooltipLabel, chartTimeXAxis, chartTooltipLabel, chartTooltipStyle } from '../chartTheme'
 import { colors, fonts } from '../theme'
 import { formatDuration } from '../utils/duration'
 import { formatBytes } from '../utils/bytes'
 import { useAdaptivePoll } from '../utils/poll'
+import { DEFAULT_CHART_RANGE, emptyChartMessage, formatChartTick, statsQuery, type ChartRange } from '../utils/period'
 
 type Tab = 'overview' | 'performance' | 'storage' | 'security' | 'services' | 'alerts'
 type Band = 'Normal' | 'Warning' | 'Critical'
@@ -42,10 +44,8 @@ function hostBadge(h: Host): string {
   return h.status || 'pending'
 }
 
-function formatBucket(iso: string, period: string): string {
-  const d = new Date(iso)
-  if (period === '24h') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+function formatBucket(iso: string, range: ChartRange): string {
+  return formatChartTick(iso, range)
 }
 
 function timeAgo(iso?: string): string {
@@ -129,6 +129,7 @@ function healthColor(status: HealthStatus): string {
 }
 
 type ChartPoint = {
+  ts: number
   time: string
   cpu: number | null
   mem: number | null
@@ -147,7 +148,7 @@ export default function HostDetail() {
   const [stats, setStats] = useState<HostStats | null>(null)
   const [incidents, setIncidents] = useState<Incident[]>([])
   const [tab, setTab] = useState<Tab>('overview')
-  const [period, setPeriod] = useState('24h')
+  const [range, setRange] = useState<ChartRange>(DEFAULT_CHART_RANGE)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveNotice, setSaveNotice] = useState(false)
@@ -166,7 +167,7 @@ export default function HostDetail() {
     if (!id) return null
     const [h, s, inc] = await Promise.all([
       api.getHost(id),
-      api.hostStats(id, period),
+      api.hostStats(id, statsQuery(range)),
       api.incidents({ monitorId: id, limit: 50, offset: 0 }).catch(() => ({ items: [] as Incident[] })),
     ])
     setHost(h)
@@ -180,9 +181,9 @@ export default function HostDetail() {
       setServicesText((h.services || []).join('\n'))
     }
     return { ...h, last_checked_at: h.last_seen_at }
-  }, [id, period])
+  }, [id, range])
 
-  useAdaptivePoll(id, load, [period])
+  useAdaptivePoll(id, load, [range])
 
   async function togglePause() {
     if (!host) return
@@ -269,7 +270,8 @@ export default function HostDetail() {
   const chartData: ChartPoint[] = (stats?.points || []).map(p => {
     const cores = p.num_cpu || ncpu || 1
     return {
-      time: formatBucket(p.timestamp, period),
+      ts: new Date(p.timestamp).getTime(),
+      time: formatBucket(p.timestamp, range),
       cpu: p.cpu_percent ?? null,
       mem: p.mem_percent ?? null,
       swap: p.swap_percent ?? null,
@@ -436,14 +438,14 @@ export default function HostDetail() {
             <PerformanceTab
               host={host}
               chartData={chartData}
-              period={period}
-              onPeriod={setPeriod}
+              range={range}
+              onRange={setRange}
               ncpu={ncpu}
               loadCrit={loadCrit}
             />
           )}
           {tab === 'storage' && (
-            <StorageTab host={host} disks={disks} chartData={chartData} />
+            <StorageTab host={host} disks={disks} chartData={chartData} range={range} onRange={setRange} />
           )}
           {tab === 'security' && <SecurityTab host={host} />}
           {tab === 'services' && <ServicesTab host={host} />}
@@ -525,53 +527,55 @@ function OverviewTab({
 }
 
 function PerformanceTab({
-  host, chartData, period, onPeriod, ncpu, loadCrit,
+  host, chartData, range, onRange, ncpu, loadCrit,
 }: {
   host: Host
   chartData: ChartPoint[]
-  period: string
-  onPeriod: (id: string) => void
+  range: ChartRange
+  onRange: (range: ChartRange) => void
   ncpu: number
   loadCrit: number
 }) {
+  const activePeriod = range.kind === 'relative' ? range.period : ''
+  const chartProps = { data: chartData, range, onRange }
   return (
     <>
       <div style={{ marginBottom: 16 }}>
         <SegmentedTabs
           label="Chart period"
-          value={period}
-          onChange={onPeriod}
+          value={activePeriod}
+          onChange={id => onRange({ kind: 'relative', period: id })}
           tabs={[{ id: '24h', label: '24h' }, { id: '7d', label: '7d' }, { id: '30d', label: '30d' }]}
         />
       </div>
       <div className="grid-2" style={{ marginBottom: 16, alignItems: 'stretch' }}>
         {host.collect_cpu && (
-          <MetricChart title="CPU" data={chartData} dataKey="cpu" color={colors.brand} unit="%" domain={[0, 100]}
+          <MetricChart title="CPU" {...chartProps} dataKey="cpu" color={colors.brand} unit="%" domain={[0, 100]}
             warning={host.alert_cpu_enabled ? host.alert_cpu_warning : undefined}
             critical={host.alert_cpu_enabled ? host.alert_cpu_threshold : undefined} />
         )}
         {host.collect_memory && (
-          <MetricChart title="Memory" data={chartData} dataKey="mem" color={colors.blue} unit="%" domain={[0, 100]}
+          <MetricChart title="Memory" {...chartProps} dataKey="mem" color={colors.blue} unit="%" domain={[0, 100]}
             warning={host.alert_memory_enabled ? host.alert_memory_warning : undefined}
             critical={host.alert_memory_enabled ? host.alert_memory_threshold : undefined} />
         )}
         {host.collect_load && (
-          <MetricChart title={ncpu ? `Load (% of ${ncpu} cores)` : 'Load'} data={chartData} dataKey="loadPct" color={colors.green} unit="%"
+          <MetricChart title={ncpu ? `Load (% of ${ncpu} cores)` : 'Load'} {...chartProps} dataKey="loadPct" color={colors.green} unit="%"
             warning={host.alert_load_enabled ? host.alert_load_warning : undefined}
             critical={host.alert_load_enabled ? loadCrit : undefined} />
         )}
         {host.collect_disk && (
-          <MetricChart title="Disk" data={chartData} dataKey="disk" color={colors.yellow} unit="%" domain={[0, 100]}
+          <MetricChart title="Disk" {...chartProps} dataKey="disk" color={colors.yellow} unit="%" domain={[0, 100]}
             warning={host.alert_disk_enabled ? host.alert_disk_warning : undefined}
             critical={host.alert_disk_enabled ? host.alert_disk_threshold : undefined} />
         )}
         {host.collect_swap && (
-          <MetricChart title="Swap" data={chartData} dataKey="swap" color="#bc8cff" unit="%" domain={[0, 100]}
+          <MetricChart title="Swap" {...chartProps} dataKey="swap" color="#bc8cff" unit="%" domain={[0, 100]}
             warning={host.alert_swap_enabled ? host.alert_swap_warning : undefined}
             critical={host.alert_swap_enabled ? host.alert_swap_threshold : undefined} />
         )}
         {host.collect_iowait && (
-          <MetricChart title="I/O wait" data={chartData} dataKey="iowait" color={colors.yellow} unit="%" domain={[0, 100]}
+          <MetricChart title="I/O wait" {...chartProps} dataKey="iowait" color={colors.yellow} unit="%" domain={[0, 100]}
             warning={host.alert_iowait_enabled ? host.alert_iowait_warning : undefined}
             critical={host.alert_iowait_enabled ? host.alert_iowait_threshold : undefined} />
         )}
@@ -580,7 +584,7 @@ function PerformanceTab({
   )
 }
 
-function StorageTab({ host, disks, chartData }: { host: Host; disks: HostDisk[]; chartData: ChartPoint[] }) {
+function StorageTab({ host, disks, chartData, range, onRange }: { host: Host; disks: HostDisk[]; chartData: ChartPoint[]; range: ChartRange; onRange: (range: ChartRange) => void }) {
   return (
     <>
       <Panel style={{ marginBottom: 16 }}>
@@ -630,7 +634,7 @@ function StorageTab({ host, disks, chartData }: { host: Host; disks: HostDisk[];
         )}
       </Panel>
       {host.collect_disk && (
-        <MetricChart title="Worst disk" data={chartData} dataKey="disk" color={colors.yellow} unit="%" domain={[0, 100]}
+        <MetricChart title="Worst disk" data={chartData} range={range} onRange={onRange} dataKey="disk" color={colors.yellow} unit="%" domain={[0, 100]}
           warning={host.alert_disk_enabled ? host.alert_disk_warning : undefined}
           critical={host.alert_disk_enabled ? host.alert_disk_threshold : undefined} />
       )}
@@ -943,16 +947,18 @@ function InfoRow({ label, value, color }: { label: string; value: string; color?
 }
 
 function MetricChart({
-  title, data, dataKey, color, unit, warning, critical, domain,
+  title, data, dataKey, color, unit, warning, critical, domain, range, onRange,
 }: {
   title: string
   data: ChartPoint[]
-  dataKey: keyof Omit<ChartPoint, 'time'>
+  dataKey: keyof Omit<ChartPoint, 'time' | 'ts'>
   color: string
   unit: string
   warning?: number
   critical?: number
   domain?: [number, number]
+  range: ChartRange
+  onRange: (range: ChartRange) => void
 }) {
   const gradId = `host-grad-${dataKey}`
   const has = data.some(p => p[dataKey] != null)
@@ -960,8 +966,9 @@ function MetricChart({
     <Panel style={{ marginBottom: 0 }}>
       <h3 className="panel-title">{title}</h3>
       <div style={{ height: 240 }}>
+        <ChartWheelZoom range={range} onChange={onRange}>
         {has ? (
-          <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={data}>
               <defs>
                 <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
@@ -970,11 +977,12 @@ function MetricChart({
                 </linearGradient>
               </defs>
               <CartesianGrid stroke={chartGridStroke} vertical={false} />
-              <XAxis dataKey="time" tick={chartTick} axisLine={false} tickLine={false} />
+              <XAxis {...chartTimeXAxis(range)} />
               <YAxis domain={domain} unit={unit} tick={chartTick} axisLine={false} tickLine={false} width={unit ? 52 : 40} />
               <Tooltip
                 contentStyle={chartTooltipStyle}
                 labelStyle={chartTooltipLabel}
+                labelFormatter={chartTimeTooltipLabel(range)}
                 formatter={(value: number) => [`${fmt(value, dataKey === 'load' ? 2 : 1)}${unit}`, title]}
               />
               {warning != null && (
@@ -985,10 +993,11 @@ function MetricChart({
               )}
               <Area type="monotone" dataKey={dataKey} stroke={color} fill={`url(#${gradId})`} strokeWidth={2} name={title} connectNulls />
             </AreaChart>
-          </ResponsiveContainer>
+            </ResponsiveContainer>
         ) : (
-          <div style={styles.empty}>Waiting for samples…</div>
+          <div style={styles.empty}>{emptyChartMessage(range)}</div>
         )}
+        </ChartWheelZoom>
       </div>
     </Panel>
   )
