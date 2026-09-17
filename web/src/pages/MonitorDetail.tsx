@@ -13,13 +13,15 @@ import MetricCard from '../components/MetricCard'
 import NextCheckCountdown from '../components/NextCheckCountdown'
 import PageHeader from '../components/PageHeader'
 import Surface from '../components/Panel'
-import SegmentedTabs from '../components/SegmentedTabs'
+import ChartTimeRange from '../components/ChartTimeRange'
+import ChartWheelZoom from '../components/ChartWheelZoom'
 import StatusBadge, { badgeStatusFor, isPaused } from '../components/StatusBadge'
 import TypeBadge from '../components/TypeBadge'
 import { useAuth } from '../context/AuthContext'
-import { chartGridStroke, chartTick, chartTooltipLabel, chartTooltipStyle } from '../chartTheme'
+import { chartGridStroke, chartTick, chartTimeTooltipLabel, chartTimeXAxis, chartTooltipLabel, chartTooltipStyle } from '../chartTheme'
 import { colors, fonts } from '../theme'
 import { formatDuration, incidentDurationSeconds } from '../utils/duration'
+import { DEFAULT_CHART_RANGE, emptyChartMessage, formatChartTick, statsQuery, type ChartRange, type ChartTimeZone } from '../utils/period'
 import { useAdaptivePoll } from '../utils/poll'
 
 export default function MonitorDetail() {
@@ -29,18 +31,19 @@ export default function MonitorDetail() {
   const [stats, setStats] = useState<MonitorStats | null>(null)
   const [latest, setLatest] = useState<CheckResult | undefined>()
   const [incidents, setIncidents] = useState<Incident[]>([])
-  const [period, setPeriod] = useState('24h')
+  const [range, setRange] = useState<ChartRange>(DEFAULT_CHART_RANGE)
+  const [timeZone, setTimeZone] = useState<ChartTimeZone>('utc')
   const [editing, setEditing] = useState(false)
   const [toggling, setToggling] = useState(false)
   const [actionError, setActionError] = useState('')
-  const periodRef = useRef(period)
-  periodRef.current = period
+  const rangeRef = useRef(range)
+  rangeRef.current = range
 
   const load = useCallback(async () => {
     if (!id) return null
     const monitorP = api.getMonitor(id)
     const resultsP = api.results(id, { limit: 1, offset: 0 })
-    const statsP = api.stats(id, periodRef.current)
+    const statsP = api.stats(id, statsQuery(rangeRef.current))
     const incP = api.monitorIncidents(id, { limit: 20, offset: 0 })
 
     const [m, r] = await Promise.all([monitorP, resultsP])
@@ -53,7 +56,7 @@ export default function MonitorDetail() {
     return m
   }, [id])
 
-  const refreshRef = useAdaptivePoll(id, load, [period])
+  const refreshRef = useAdaptivePoll(id, load, [range])
 
   async function togglePause() {
     if (!monitor) return
@@ -74,7 +77,8 @@ export default function MonitorDetail() {
   const type = monitor.type || 'http'
   const target = type === 'port' ? `${monitor.url}:${monitor.port}` : monitor.url
   const chartData = (stats?.points || []).map(p => ({
-    time: new Date(p.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    ts: new Date(p.timestamp).getTime(),
+    time: formatChartTick(p.timestamp, range, timeZone),
     ms: p.response_time_ms,
   }))
 
@@ -109,22 +113,14 @@ export default function MonitorDetail() {
         <Surface style={{ marginBottom: 20 }}>
           <div style={styles.chartHeader}>
             <h3 className="panel-title" style={{ margin: 0 }}>Availability History</h3>
-            <SegmentedTabs
-              label="Chart period"
-              value={period}
-              onChange={setPeriod}
-              tabs={[
-                { id: '24h', label: '24h' },
-                { id: '7d', label: '7d' },
-                { id: '30d', label: '30d' },
-              ]}
-            />
+            <ChartTimeRange value={range} onChange={setRange} timeZone={timeZone} onTimeZoneChange={setTimeZone} />
           </div>
           <div style={{ height: 260 }}>
+            <ChartWheelZoom range={range} onChange={setRange}>
             {!stats ? (
               <div style={styles.emptyChart}>Loading history…</div>
             ) : chartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData}>
                   <defs>
                     <linearGradient id="fillInstrument" x1="0" y1="0" x2="0" y2="1">
@@ -133,18 +129,20 @@ export default function MonitorDetail() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid stroke={chartGridStroke} vertical={false} />
-                  <XAxis dataKey="time" tick={chartTick} axisLine={false} tickLine={false} />
+                  <XAxis {...chartTimeXAxis(range, timeZone)} />
                   <YAxis unit="ms" tick={chartTick} axisLine={false} tickLine={false} />
                   <Tooltip
                     contentStyle={chartTooltipStyle}
                     labelStyle={chartTooltipLabel}
+                    labelFormatter={chartTimeTooltipLabel(range, timeZone)}
                   />
                   <Area type="linear" dataKey="ms" stroke={colors.brand} fill="url(#fillInstrument)" strokeWidth={2} isAnimationActive={false} />
                 </AreaChart>
-              </ResponsiveContainer>
+                </ResponsiveContainer>
             ) : (
-              <div style={styles.emptyChart}>No data yet — waiting for first check</div>
+              <div style={styles.emptyChart}>{emptyChartMessage(range)}</div>
             )}
+            </ChartWheelZoom>
           </div>
         </Surface>
       )}

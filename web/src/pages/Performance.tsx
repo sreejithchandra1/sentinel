@@ -12,10 +12,13 @@ import PerformanceForm from './PerformanceForm'
 import MetricCard from '../components/MetricCard'
 import PageHeader from '../components/PageHeader'
 import Panel from '../components/Panel'
+import ChartTimeRange from '../components/ChartTimeRange'
+import ChartWheelZoom from '../components/ChartWheelZoom'
 import SegmentedTabs from '../components/SegmentedTabs'
 import { useAuth } from '../context/AuthContext'
-import { chartGridStroke, chartTick, chartTooltipLabel, chartTooltipStyle } from '../chartTheme'
+import { chartGridStroke, chartTick, chartTimeTooltipLabel, chartTimeXAxis, chartTooltipLabel, chartTooltipStyle } from '../chartTheme'
 import { colors, fonts } from '../theme'
+import { DEFAULT_CHART_RANGE, formatChartTick, formatRangeLabel, statsQuery, type ChartRange, type ChartTimeZone } from '../utils/period'
 
 type HealthTab = 'all' | 'good' | 'slow' | 'failed' | 'collecting' | 'paused'
 
@@ -36,10 +39,8 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString()
 }
 
-function formatBucket(iso: string, period: string) {
-  const d = new Date(iso)
-  if (period === '24h') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+function formatBucket(iso: string, range: ChartRange, timeZone: ChartTimeZone) {
+  return formatChartTick(iso, range, timeZone)
 }
 
 function targetHealth(t: PerformanceTarget, svc?: ServicePerformance): PerformanceHealth {
@@ -65,7 +66,8 @@ export default function Performance() {
   const { isAdmin, isPlatformAdmin } = useAuth()
   const [targets, setTargets] = useState<PerformanceTarget[]>([])
   const [summary, setSummary] = useState<FleetPerformance | null>(null)
-  const [period, setPeriod] = useState('24h')
+  const [range, setRange] = useState<ChartRange>(DEFAULT_CHART_RANGE)
+  const [timeZone, setTimeZone] = useState<ChartTimeZone>('utc')
   const [search, setSearch] = useState('')
   const [healthTab, setHealthTab] = useState<HealthTab>('all')
   const [selectedCustomers, setSelectedCustomers] = useState<string[]>([])
@@ -84,16 +86,17 @@ export default function Performance() {
   }, [isPlatformAdmin])
 
   useEffect(() => {
+    const win = statsQuery(range)
     Promise.all([
       api.performanceTargets().then(setTargets),
-      api.performance(period).then(setSummary),
+      api.performance(win).then(setSummary),
     ]).catch(err => setError(err instanceof Error ? err.message : 'Failed to load'))
     const id = setInterval(() => {
       api.performanceTargets().then(setTargets).catch(() => {})
-      api.performance(period).then(setSummary).catch(() => {})
+      api.performance(win).then(setSummary).catch(() => {})
     }, 30000)
     return () => clearInterval(id)
-  }, [period])
+  }, [range])
 
   const serviceById = useMemo(() => {
     const map: Record<string, ServicePerformance> = {}
@@ -149,7 +152,8 @@ export default function Performance() {
   })
 
   const timeline = (summary?.timeline || []).map(p => ({
-    time: formatBucket(p.timestamp, period),
+    ts: new Date(p.timestamp).getTime(),
+    time: formatBucket(p.timestamp, range, timeZone),
     avg: p.avg_ms,
   }))
 
@@ -217,22 +221,13 @@ export default function Performance() {
                 onChange={setSelectedCustomers}
               />
             )}
-            <SegmentedTabs
-              label="Latency period"
-              value={period}
-              onChange={setPeriod}
-              tabs={[
-                { id: '24h', label: '24h' },
-                { id: '7d', label: '7d' },
-                { id: '30d', label: '30d' },
-              ]}
-            />
             {isAdmin && (
               <button type="button" className="btn btn-primary" onClick={() => setTargetForm('new')}>+ Add Target</button>
             )}
           </>
         }
       />
+      <ChartTimeRange label="Latency period" value={range} onChange={setRange} timeZone={timeZone} onTimeZoneChange={setTimeZone} />
       <div className="performance-layout">
         <div className="page-layout-main">
           {searched.length > 0 && (
@@ -241,7 +236,7 @@ export default function Performance() {
                 <MetricCard
                   label="Fleet P95"
                   value={summary?.p95_ms != null ? `${summary.p95_ms} ms` : '—'}
-                  sub={`${period === '24h' ? 'Last 24 hours' : period === '7d' ? 'Last 7 days' : 'Last 30 days'}${slowRate != null ? ` · ${slowRate}% slow` : ''}`}
+                  sub={`${formatRangeLabel(range)}${slowRate != null ? ` · ${slowRate}% slow` : ''}`}
                 />
               </div>
               <MetricCard label="Targets" value={String(searched.length)} sub="Total targets" />
@@ -402,7 +397,8 @@ export default function Performance() {
             <div style={styles.railLabel}>Fleet Latency</div>
             <div style={{ height: 140, marginTop: 8 }}>
               {timeline.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
+                <ChartWheelZoom range={range} onChange={setRange}>
+                  <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={timeline}>
                     <defs>
                       <linearGradient id="perfRailGrad" x1="0" y1="0" x2="0" y2="1">
@@ -411,16 +407,18 @@ export default function Performance() {
                       </linearGradient>
                     </defs>
                     <CartesianGrid stroke={chartGridStroke} vertical={false} />
-                    <XAxis dataKey="time" hide tick={chartTick} />
+                    <XAxis {...chartTimeXAxis(range, timeZone)} hide />
                     <YAxis hide domain={['auto', 'auto']} tick={chartTick} />
                     <Tooltip
                       contentStyle={chartTooltipStyle}
                       labelStyle={chartTooltipLabel}
+                      labelFormatter={chartTimeTooltipLabel(range, timeZone)}
                       formatter={(v: number) => [`${v} ms`, 'Avg']}
                     />
                     <Area type="monotone" dataKey="avg" stroke={colors.brand} fill="url(#perfRailGrad)" strokeWidth={2} />
                   </AreaChart>
-                </ResponsiveContainer>
+                  </ResponsiveContainer>
+                </ChartWheelZoom>
               ) : (
                 <div style={styles.railEmpty}>Waiting for data…</div>
               )}
@@ -475,7 +473,7 @@ export default function Performance() {
           onSaved={() => {
             setTargetForm(null)
             api.performanceTargets().then(setTargets).catch(() => {})
-            api.performance(period).then(setSummary).catch(() => {})
+            api.performance(statsQuery(range)).then(setSummary).catch(() => {})
           }}
         />
       )}

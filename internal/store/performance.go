@@ -9,31 +9,27 @@ import (
 )
 
 const monitorSparklinePoints = 24
-const maxChartPoints = 400
 
-// downsamplePoints keeps at most max points, preserving spikes by taking the
-// highest latency sample in each bucket. Percentiles are computed on the full set.
-func downsamplePoints(points []models.StatsPoint, max int) []models.StatsPoint {
-	n := len(points)
-	if max <= 0 || n <= max {
-		return points
+func chartBucketDuration(span time.Duration) time.Duration {
+	if span < time.Minute {
+		span = time.Minute
 	}
-	out := make([]models.StatsPoint, 0, max)
-	for i := 0; i < max; i++ {
-		start := i * n / max
-		end := (i + 1) * n / max
-		if end <= start {
-			continue
-		}
-		best := points[start]
-		for _, p := range points[start:end] {
-			if p.ResponseTimeMs > best.ResponseTimeMs {
-				best = p
-			}
-		}
-		out = append(out, best)
+	switch {
+	case span <= 30*time.Minute:
+		return time.Minute
+	case span <= 2*time.Hour:
+		return 2 * time.Minute
+	case span <= 6*time.Hour:
+		return 5 * time.Minute
+	case span <= 24*time.Hour:
+		return 15 * time.Minute
+	case span <= 7 * 24 * time.Hour:
+		return time.Hour
+	case span <= 30 * 24 * time.Hour:
+		return 6 * time.Hour
+	default:
+		return 24 * time.Hour
 	}
-	return out
 }
 
 func percentile(sorted []int, p float64) int {
@@ -84,25 +80,53 @@ func targetHealth(hasData bool, p95, threshold int) string {
 	return "good"
 }
 
-func fleetBucketDuration(since time.Time) time.Duration {
-	span := time.Since(since)
-	switch {
-	case span > 14*24*time.Hour:
-		return 24 * time.Hour
-	case span > 48*time.Hour:
-		return 6 * time.Hour
-	default:
-		return time.Hour
+func fleetBucketDuration(from, to time.Time) time.Duration {
+	if to.IsZero() {
+		to = time.Now().UTC()
+	}
+	return chartBucketDuration(to.Sub(from))
+}
+
+func normalizeStatsBounds(from, to time.Time) (time.Time, time.Time) {
+	if to.IsZero() {
+		to = time.Now().UTC()
+	}
+	if from.IsZero() || !to.After(from) {
+		from = to.Add(-24 * time.Hour)
+	}
+	return from, to
+}
+
+func keepSpike(buckets map[int64]models.StatsPoint, pt models.StatsPoint, bucketDur time.Duration) {
+	start := pt.Timestamp.Truncate(bucketDur)
+	key := start.Unix()
+	pt.Timestamp = start
+	if prev, ok := buckets[key]; !ok || pt.ResponseTimeMs > prev.ResponseTimeMs {
+		buckets[key] = pt
 	}
 }
 
-func (s *Store) GetMonitorStats(monitorID string, since time.Time) (*models.MonitorStats, error) {
+func sortedBuckets(buckets map[int64]models.StatsPoint) []models.StatsPoint {
+	keys := make([]int64, 0, len(buckets))
+	for k := range buckets {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	out := make([]models.StatsPoint, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, buckets[k])
+	}
+	return out
+}
+
+func (s *Store) GetMonitorStats(monitorID string, from, to time.Time) (*models.MonitorStats, error) {
+	from, to = normalizeStatsBounds(from, to)
 	rows, err := s.db.Query(`
 		SELECT checked_at, response_time_ms, status, dns_ms, tcp_ms, tls_ms, ttfb_ms
 		FROM check_results
-		WHERE monitor_id = ? AND checked_at >= ?
+		WHERE monitor_id = ? AND checked_at >= ? AND checked_at <= ?
 		ORDER BY checked_at ASC`,
-		monitorID, formatTime(since),
+		monitorID, formatTime(from), formatTime(to),
 	)
 	if err != nil {
 		return nil, err
@@ -112,6 +136,8 @@ func (s *Store) GetMonitorStats(monitorID string, since time.Time) (*models.Moni
 	stats := &models.MonitorStats{MonitorID: monitorID}
 	var times []int
 	var totalRT, upCount, slowCount, total int
+	bucketDur := chartBucketDuration(to.Sub(from))
+	buckets := map[int64]models.StatsPoint{}
 
 	for rows.Next() {
 		var checkedAt string
@@ -123,7 +149,7 @@ func (s *Store) GetMonitorStats(monitorID string, since time.Time) (*models.Moni
 		}
 
 		t, _ := parseTime(checkedAt)
-		stats.Points = append(stats.Points, models.StatsPoint{
+		pt := models.StatsPoint{
 			Timestamp:      t,
 			ResponseTimeMs: rt,
 			Status:         status,
@@ -131,7 +157,8 @@ func (s *Store) GetMonitorStats(monitorID string, since time.Time) (*models.Moni
 			TCPMs:          nullableInt(tcpMs),
 			TLSMs:          nullableInt(tlsMs),
 			TTFBMs:         nullableInt(ttfbMs),
-		})
+		}
+		keepSpike(buckets, pt, bucketDur)
 		times = append(times, rt)
 		totalRT += rt
 		total++
@@ -151,7 +178,7 @@ func (s *Store) GetMonitorStats(monitorID string, since time.Time) (*models.Moni
 		stats.UptimePct = float64(upCount) / float64(total) * 100
 	}
 	stats.Performance = computePerformance(times, slowCount, total)
-	stats.Points = downsamplePoints(stats.Points, maxChartPoints)
+	stats.Points = sortedBuckets(buckets)
 	return stats, nil
 }
 
@@ -240,16 +267,17 @@ func (s *Store) ListMonitorRowStats(monitorIDs []string, since time.Time) (map[s
 	return out, nil
 }
 
-func (s *Store) GetPerformanceTargetStats(targetID string, since time.Time) (*models.PerformanceStats, error) {
+func (s *Store) GetPerformanceTargetStats(targetID string, from, to time.Time) (*models.PerformanceStats, error) {
+	from, to = normalizeStatsBounds(from, to)
 	var threshold int
 	_ = s.db.QueryRow(`SELECT slow_threshold_ms FROM performance_targets WHERE id = ?`, targetID).Scan(&threshold)
 
 	rows, err := s.db.Query(`
 		SELECT checked_at, response_time_ms, status, dns_ms, tcp_ms, tls_ms, ttfb_ms
 		FROM performance_results
-		WHERE target_id = ? AND checked_at >= ?
+		WHERE target_id = ? AND checked_at >= ? AND checked_at <= ?
 		ORDER BY checked_at ASC`,
-		targetID, formatTime(since),
+		targetID, formatTime(from), formatTime(to),
 	)
 	if err != nil {
 		return nil, err
@@ -259,6 +287,8 @@ func (s *Store) GetPerformanceTargetStats(targetID string, since time.Time) (*mo
 	stats := &models.PerformanceStats{TargetID: targetID}
 	var times []int
 	var totalRT, slowCount, total int
+	bucketDur := chartBucketDuration(to.Sub(from))
+	buckets := map[int64]models.StatsPoint{}
 
 	for rows.Next() {
 		var checkedAt string
@@ -270,7 +300,7 @@ func (s *Store) GetPerformanceTargetStats(targetID string, since time.Time) (*mo
 		}
 
 		t, _ := parseTime(checkedAt)
-		stats.Points = append(stats.Points, models.StatsPoint{
+		pt := models.StatsPoint{
 			Timestamp:      t,
 			ResponseTimeMs: rt,
 			Status:         status,
@@ -278,7 +308,8 @@ func (s *Store) GetPerformanceTargetStats(targetID string, since time.Time) (*mo
 			TCPMs:          nullableInt(tcpMs),
 			TLSMs:          nullableInt(tlsMs),
 			TTFBMs:         nullableInt(ttfbMs),
-		})
+		}
+		keepSpike(buckets, pt, bucketDur)
 		if status != string(models.StatusDown) {
 			times = append(times, rt)
 			totalRT += rt
@@ -296,6 +327,7 @@ func (s *Store) GetPerformanceTargetStats(targetID string, since time.Time) (*mo
 		stats.AvgResponse = totalRT / total
 	}
 	stats.Performance = computePerformance(times, slowCount, total)
+	stats.Points = sortedBuckets(buckets)
 	return stats, nil
 }
 
@@ -324,18 +356,18 @@ func (s *Store) GetPerformanceSlowStats(targetID string, since time.Time) (slowP
 	return slowPct, total, slow, nil
 }
 
-func (s *Store) GetFleetPerformance(since time.Time) (*models.FleetPerformance, error) {
-	return s.GetFleetPerformanceScoped(since, "")
+func (s *Store) GetFleetPerformance(from, to time.Time) (*models.FleetPerformance, error) {
+	return s.GetFleetPerformanceScoped(from, to, "")
 }
 
-func (s *Store) GetFleetPerformanceByTenant(since time.Time, tenantID string) (*models.FleetPerformance, error) {
+func (s *Store) GetFleetPerformanceByTenant(from, to time.Time, tenantID string) (*models.FleetPerformance, error) {
 	if tenantID == "" {
 		return &models.FleetPerformance{Monitors: []models.MonitorPerformance{}, Timeline: []models.FleetTimelinePoint{}}, nil
 	}
-	return s.GetFleetPerformanceScoped(since, tenantID)
+	return s.GetFleetPerformanceScoped(from, to, tenantID)
 }
 
-func (s *Store) GetFleetPerformanceScoped(since time.Time, tenantID string) (*models.FleetPerformance, error) {
+func (s *Store) GetFleetPerformanceScoped(from, to time.Time, tenantID string) (*models.FleetPerformance, error) {
 	type targetAgg struct {
 		meta  models.MonitorPerformance
 		times []int
@@ -373,7 +405,8 @@ func (s *Store) GetFleetPerformanceScoped(since time.Time, tenantID string) (*mo
 		return nil, err
 	}
 
-	bucketDur := fleetBucketDuration(since)
+	from, to = normalizeStatsBounds(from, to)
+	bucketDur := fleetBucketDuration(from, to)
 	type bucketAgg struct {
 		totalRT   int
 		count     int
@@ -387,8 +420,8 @@ func (s *Store) GetFleetPerformanceScoped(since time.Time, tenantID string) (*mo
 	resultRows, err := s.db.Query(`
 		SELECT target_id, checked_at, response_time_ms, status
 		FROM performance_results
-		WHERE checked_at >= ?
-		ORDER BY checked_at ASC`, formatTime(since))
+		WHERE checked_at >= ? AND checked_at <= ?
+		ORDER BY checked_at ASC`, formatTime(from), formatTime(to))
 	if err != nil {
 		return nil, err
 	}
