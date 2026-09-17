@@ -632,17 +632,6 @@ func (s *Server) handleListMonitorIncidents(w http.ResponseWriter, r *http.Reque
 
 const maxMonitorStatsIDs = 200
 
-func statsSince(period string) time.Time {
-	switch period {
-	case "7d":
-		return time.Now().AddDate(0, 0, -7)
-	case "30d":
-		return time.Now().AddDate(0, 0, -30)
-	default:
-		return time.Now().Add(-24 * time.Hour)
-	}
-}
-
 func uniqueIDs(ids []string) []string {
 	out := make([]string, 0, len(ids))
 	seen := make(map[string]bool, len(ids))
@@ -755,7 +744,8 @@ func (s *Server) handleGetStats(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusNotFound, "not found")
 		return
 	}
-	stats, err := s.store.GetMonitorStats(id, statsSince(r.URL.Query().Get("period")))
+	win := parseStatsRange(r.URL.Query().Get("period"), r.URL.Query().Get("from"), r.URL.Query().Get("to"))
+	stats, err := s.store.GetMonitorStats(id, win.From, win.To)
 	if err != nil {
 		jsonInternal(w, err)
 		return

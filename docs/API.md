@@ -22,7 +22,7 @@ Authenticated examples use a Bearer token. Cookie sessions from the dashboard (`
 | Empty delete | `204 No Content`, no body |
 | Create | `201 Created` plus the new object |
 | Pagination | `limit` (default 20, max 100), `offset`, response `{ items, total, limit, offset }` |
-| Stats period | `24h` (default), `7d`, `30d` |
+| Stats window | Relative `period`: `{n}m`, `{n}h`, `{n}d`, `{n}w`, `{n}M` (default `24h`). Absolute: `from` + `to` (RFC 3339). Max span 366 days. Chart points are auto-bucketed by window size. |
 | Interval | Check interval minimum **30 seconds** |
 | Passwords | At least 8 characters, one letter and one number |
 
@@ -487,11 +487,13 @@ curl -sS -H "Authorization: Bearer $TOKEN" \
 
 ### `GET /api/monitors/{id}/stats`
 
-Query: `period=24h|7d|30d`.
+Query: `period` (`15m`, `1h`, `6h`, `24h`, `7d`, `30d`, `90d`, `{n}w`, `{n}M`, …) **or** `from` + `to` (RFC 3339). Points are auto-bucketed (1m–1d) from the selected span.
 
 ```bash
 curl -sS -H "Authorization: Bearer $TOKEN" \
   "$BASE/api/monitors/MONITOR_ID/stats?period=24h"
+curl -sS -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/monitors/MONITOR_ID/stats?from=2026-09-16T14:00:00Z&to=2026-09-16T15:00:00Z"
 ```
 
 ```json
@@ -534,7 +536,7 @@ Latency probes, separate from uptime monitors. **List/get:** any user. **Write:*
 
 ### `GET /api/performance`
 
-Fleet percentiles. Query: `period`, `customer`.
+Fleet percentiles. Query: `period` (`15m`, `1h`, `6h`, `24h`, `7d`, `30d`, `90d`, `{n}w`, `{n}M`, …) **or** `from` + `to`, plus `customer`. Timeline points are auto-bucketed by span.
 
 ```bash
 curl -sS -H "Authorization: Bearer $TOKEN" "$BASE/api/performance?period=24h"
@@ -605,6 +607,8 @@ curl -sS -H "Authorization: Bearer $TOKEN" \
 ```
 
 ### `GET /api/performance/targets/{id}/stats`
+
+Query: `period` (`15m`, `1h`, `6h`, `24h`, `7d`, `30d`, `90d`, `{n}w`, `{n}M`, …) **or** `from` + `to` (RFC 3339). Points are auto-bucketed by span.
 
 ```bash
 curl -sS -H "Authorization: Bearer $TOKEN" \

@@ -258,9 +258,8 @@ func (s *Server) handleGetPerformanceStats(w http.ResponseWriter, r *http.Reques
 		jsonError(w, http.StatusNotFound, "not found")
 		return
 	}
-	period := r.URL.Query().Get("period")
-	since := periodSince(period)
-	stats, err := s.store.GetPerformanceTargetStats(id, since)
+	win := parseStatsRange(r.URL.Query().Get("period"), r.URL.Query().Get("from"), r.URL.Query().Get("to"))
+	stats, err := s.store.GetPerformanceTargetStats(id, win.From, win.To)
 	if err != nil {
 		jsonInternal(w, err)
 		return

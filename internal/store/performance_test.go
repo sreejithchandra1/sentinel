@@ -56,7 +56,7 @@ func TestListMonitorRowStats(t *testing.T) {
 		t.Fatalf("len=%d, want 3", len(got))
 	}
 
-	full, err := st.GetMonitorStats(a.ID, since)
+	full, err := st.GetMonitorStats(a.ID, since, now.Add(30*time.Minute))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,28 +82,35 @@ func TestListMonitorRowStats(t *testing.T) {
 	}
 }
 
-func TestDownsamplePointsPreservesSpikes(t *testing.T) {
-	points := make([]models.StatsPoint, 1000)
-	for i := range points {
-		points[i] = models.StatsPoint{ResponseTimeMs: i}
+func TestKeepSpikePreservesMaxInBucket(t *testing.T) {
+	now := time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)
+	buckets := map[int64]models.StatsPoint{}
+	keepSpike(buckets, models.StatsPoint{Timestamp: now, ResponseTimeMs: 10}, time.Minute)
+	keepSpike(buckets, models.StatsPoint{Timestamp: now.Add(10 * time.Second), ResponseTimeMs: 9999}, time.Minute)
+	keepSpike(buckets, models.StatsPoint{Timestamp: now.Add(20 * time.Second), ResponseTimeMs: 5}, time.Minute)
+	pts := sortedBuckets(buckets)
+	if len(pts) != 1 || pts[0].ResponseTimeMs != 9999 {
+		t.Fatalf("got %#v", pts)
 	}
-	points[500].ResponseTimeMs = 9999
-	got := downsamplePoints(points, 400)
-	if len(got) != 400 {
-		t.Fatalf("len=%d, want 400", len(got))
+}
+
+func TestChartBucketDuration(t *testing.T) {
+	cases := []struct {
+		span time.Duration
+		want time.Duration
+	}{
+		{15 * time.Minute, time.Minute},
+		{1 * time.Hour, 2 * time.Minute},
+		{6 * time.Hour, 5 * time.Minute},
+		{24 * time.Hour, 15 * time.Minute},
+		{7 * 24 * time.Hour, time.Hour},
+		{30 * 24 * time.Hour, 6 * time.Hour},
+		{90 * 24 * time.Hour, 24 * time.Hour},
 	}
-	found := false
-	for _, p := range got {
-		if p.ResponseTimeMs == 9999 {
-			found = true
-			break
+	for _, tc := range cases {
+		if got := chartBucketDuration(tc.span); got != tc.want {
+			t.Fatalf("span %v: got %v want %v", tc.span, got, tc.want)
 		}
-	}
-	if !found {
-		t.Fatal("expected spike 9999 to be kept")
-	}
-	if len(downsamplePoints(points[:10], 400)) != 10 {
-		t.Fatal("short series should be unchanged")
 	}
 }
 
@@ -129,12 +136,14 @@ func TestGetMonitorStatsCapsReturnedPoints(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	stats, err := st.GetMonitorStats(m.ID, now.Add(-30*24*time.Hour))
+	from := now
+	to := now.Add(500 * time.Minute)
+	stats, err := st.GetMonitorStats(m.ID, from, to)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(stats.Points) != maxChartPoints {
-		t.Fatalf("points=%d, want %d", len(stats.Points), maxChartPoints)
+	if len(stats.Points) == 0 || len(stats.Points) > 500 {
+		t.Fatalf("points=%d, want auto-bucketed subset", len(stats.Points))
 	}
 	if stats.UptimePct != 100 {
 		t.Fatalf("uptime=%v, want 100 (full series, not downsampled)", stats.UptimePct)
@@ -183,7 +192,7 @@ func TestGetPerformanceTargetStatsExcludesFailed(t *testing.T) {
 	insert(models.StatusUp, 120, 1)
 	insert(models.StatusDown, 10000, 2)
 
-	stats, err := st.GetPerformanceTargetStats(target.ID, now.Add(-time.Hour))
+	stats, err := st.GetPerformanceTargetStats(target.ID, now.Add(-time.Minute), now.Add(4*time.Minute))
 	if err != nil {
 		t.Fatal(err)
 	}

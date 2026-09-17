@@ -506,6 +506,27 @@ export function localDayBounds(date: string): { from: string; to: string } {
   return { from: start.toISOString(), to: end.toISOString() }
 }
 
+export type StatsWindow = {
+  period?: string
+  from?: string
+  to?: string
+}
+
+function statsQueryParams(win?: StatsWindow | string, extra?: Record<string, string>): string {
+  const params = new URLSearchParams()
+  if (extra) {
+    for (const [k, v] of Object.entries(extra)) params.set(k, v)
+  }
+  const q = typeof win === 'string' ? { period: win } : (win || {})
+  if (q.from && q.to) {
+    params.set('from', q.from)
+    params.set('to', q.to)
+  } else {
+    params.set('period', q.period || '24h')
+  }
+  return params.toString()
+}
+
 export interface AuditEntry {
   id: string
   actor: string
@@ -621,17 +642,16 @@ export const api = {
       `/api/monitors/${id}/incidents?${params}`,
     )
   },
-  stats: (id: string, period = '24h') =>
-    request<MonitorStats>(`/api/monitors/${id}/stats?period=${period}`),
+  stats: (id: string, win: StatsWindow | string = '24h') =>
+    request<MonitorStats>(`/api/monitors/${id}/stats?${statsQueryParams(win)}`),
   monitorStatsSummary: (period = '24h', ids: string[] = []) =>
     request<Record<string, MonitorRowStats>>('/api/monitors/stats', {
       method: 'POST',
       body: JSON.stringify({ period, ids }),
     }),
-  performance: (period = '24h', customer?: string) => {
-    const params = new URLSearchParams({ period })
-    if (customer) params.set('customer', customer)
-    return request<FleetPerformance>(`/api/performance?${params}`)
+  performance: (win: StatsWindow | string = '24h', customer?: string) => {
+    const extra = customer ? { customer } : undefined
+    return request<FleetPerformance>(`/api/performance?${statsQueryParams(win, extra)}`)
   },
   performanceTargets: (customer?: string) =>
     request<PerformanceTarget[]>(
@@ -670,8 +690,8 @@ export const api = {
       `/api/performance/targets/${id}/results?${params}`,
     )
   },
-  performanceStats: (id: string, period = '24h') =>
-    request<PerformanceStats>(`/api/performance/targets/${id}/stats?period=${period}`),
+  performanceStats: (id: string, win: StatsWindow | string = '24h') =>
+    request<PerformanceStats>(`/api/performance/targets/${id}/stats?${statsQueryParams(win)}`),
   hosts: (customer?: string) =>
     request<Host[]>(customer ? `/api/hosts?customer=${encodeURIComponent(customer)}` : '/api/hosts'),
   getHost: (id: string) => request<Host>(`/api/hosts/${id}`),
