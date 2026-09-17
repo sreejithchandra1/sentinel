@@ -134,19 +134,8 @@ export function chartTimeDomain(range: ChartRange, now = Date.now()): [number, n
   return [from.getTime(), to.getTime()]
 }
 
-function spanToRelativePeriod(spanMs: number): string {
-  const span = Math.min(MAX_ZOOM_MS, Math.max(MIN_ZOOM_MS, spanMs))
-  if (span < 90 * 60 * 1000) return `${Math.max(15, Math.round(span / 60_000))}m`
-  if (span < 40 * 60 * 60 * 1000) return `${Math.max(1, Math.round(span / 3_600_000))}h`
-  if (span < 12 * 24 * 60 * 60 * 1000) return `${Math.max(1, Math.round(span / 86_400_000))}d`
-  const weeks = Math.round(span / (7 * 86_400_000))
-  if (weeks >= 1 && weeks <= 8) return `${weeks}w`
-  return `${Math.min(90, Math.max(1, Math.round(span / 86_400_000)))}d`
-}
-
 export function zoomChartRange(range: ChartRange, factor: number, now = Date.now(), anchorRatio = 0.5): ChartRange {
-  const resolved = resolveChartRange(range, now)
-  const { from, spanMs } = resolved
+  const { from, spanMs } = resolveChartRange(range, now)
   const zoomingIn = factor < 1
   if (zoomingIn && spanMs <= MIN_ZOOM_MS) return range
   if (!zoomingIn && spanMs >= MAX_ZOOM_MS) return range
@@ -154,11 +143,6 @@ export function zoomChartRange(range: ChartRange, factor: number, now = Date.now
   let nextSpan = Math.round(spanMs * factor)
   nextSpan = Math.min(MAX_ZOOM_MS, Math.max(MIN_ZOOM_MS, nextSpan))
   if (Math.abs(nextSpan - spanMs) < 1000) return range
-
-  const live = range.kind === 'relative' || resolved.to.getTime() >= now - 5000
-  if (live) {
-    return { kind: 'relative', period: spanToRelativePeriod(nextSpan) }
-  }
 
   const r = Math.min(1, Math.max(0, Number.isFinite(anchorRatio) ? anchorRatio : 0.5))
   const anchor = from.getTime() + spanMs * r
