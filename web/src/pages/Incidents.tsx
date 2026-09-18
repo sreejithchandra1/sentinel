@@ -8,6 +8,7 @@ import PageHeader from '../components/PageHeader'
 import Panel from '../components/Panel'
 import { colors } from '../theme'
 import { formatDuration, incidentDurationSeconds } from '../utils/duration'
+import { displayIncidentMessage } from '../utils/incidentMessage'
 
 const PAGE_SIZE = 20
 
@@ -33,7 +34,7 @@ export default function Incidents() {
   const sortValue = useCallback((inc: Incident, key: string) => {
     if (key === 'monitor') return inc.monitor_name || inc.monitor_id
     if (key === 'type') return inc.type
-    if (key === 'message') return inc.message || ''
+    if (key === 'message') return displayIncidentMessage(inc.message)
     if (key === 'started') return inc.started_at
     if (key === 'duration') return incidentDurationSeconds(inc.started_at, inc.resolved_at)
     if (key === 'resolved') return inc.resolved_at || ''
@@ -163,7 +164,7 @@ export default function Incidents() {
                         <span style={styles.type}>{inc.type}</span>
                       </Link>
                     </td>
-                    <td style={{ color: colors.textMuted }}>{inc.message || '—'}</td>
+                    <td style={{ color: colors.textMuted }}>{displayIncidentMessage(inc.message) || '—'}</td>
                     <td className="num">{new Date(inc.started_at).toLocaleString()}</td>
                     <td className="num">{formatDuration(incidentDurationSeconds(inc.started_at, inc.resolved_at))}</td>
                     <td className="num" style={{ color: colors.textMuted }}>

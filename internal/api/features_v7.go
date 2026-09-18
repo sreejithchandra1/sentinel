@@ -99,6 +99,7 @@ func (s *Server) loadVisibleIncident(w http.ResponseWriter, r *http.Request) *mo
 		jsonError(w, http.StatusNotFound, "not found")
 		return nil
 	}
+	s.exposeErrorPageViewURL(item)
 	return item
 }
 
@@ -140,6 +141,7 @@ func (s *Server) handleAcknowledgeIncident(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	_ = s.store.InsertAudit(user.Username, "update", "incident", item.ID)
+	s.exposeErrorPageViewURL(acked)
 	jsonOK(w, acked)
 }
 

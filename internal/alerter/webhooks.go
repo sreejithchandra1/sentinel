@@ -101,6 +101,9 @@ func (a *Alerter) NotifyMonitorMeta(m *models.Monitor, meta AlertMeta) error {
 	if dt := meta.DowntimeLabel(); dt != "" {
 		payload["downtime"] = dt
 	}
+	if meta.ErrorPageURL != "" {
+		payload["error_page_url"] = meta.ErrorPageURL
+	}
 
 	var emailErr error
 	if m.NotifyEmail {

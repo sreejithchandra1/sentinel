@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -17,13 +18,47 @@ func (s *Store) CreateIncident(inc *models.Incident) error {
 	if inc.ResolvedAt != nil {
 		resolved = formatTime(*inc.ResolvedAt)
 	}
+	details := incidentDetailsJSON(inc)
+	inc.Details = details
+	inc.Message = models.StripHTTPErrorSourceSuffix(inc.Message)
 	_, err := s.db.Exec(`
-		INSERT INTO incidents (id, monitor_id, type, message, started_at, resolved_at)
-		VALUES (?, ?, ?, ?, ?, ?)`,
+		INSERT INTO incidents (id, monitor_id, type, message, started_at, resolved_at, details)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		inc.ID, inc.MonitorID, string(inc.Type), inc.Message,
-		formatTime(inc.StartedAt), resolved,
+		formatTime(inc.StartedAt), resolved, details,
 	)
 	return err
+}
+
+func incidentDetailsJSON(inc *models.Incident) string {
+	if inc == nil {
+		return ""
+	}
+	if inc.ErrorPage != nil {
+		if inc.ErrorPage.ViewToken == "" {
+			inc.ErrorPage.ViewToken = strings.ReplaceAll(newID(), "-", "")
+		}
+		b, err := json.Marshal(inc.ErrorPage)
+		if err == nil {
+			return string(b)
+		}
+	}
+	return inc.Details
+}
+
+func decodeIncidentErrorPage(details string) *models.HTTPErrorPage {
+	details = strings.TrimSpace(details)
+	if details == "" {
+		return nil
+	}
+	var page models.HTTPErrorPage
+	if err := json.Unmarshal([]byte(details), &page); err != nil {
+		return nil
+	}
+	if page.StatusCode == 0 && page.Source == "" && page.BodyHTML == "" && page.ViewToken == "" {
+		return nil
+	}
+	return &page
 }
 
 func (s *Store) ResolveOpenIncidents(monitorID string, incidentType models.IncidentType, resolvedAt time.Time) error {
@@ -76,6 +111,7 @@ func scanIncident(row interface {
 	}
 
 	inc.Type = models.IncidentType(incType)
+	inc.Message = models.StripHTTPErrorSourceSuffix(inc.Message)
 	applyIncidentTimes(&inc, startedAt, resolvedAt, ackedAt, ackedBy)
 	return &inc, nil
 }
@@ -102,7 +138,7 @@ func applyIncidentTimes(inc *models.Incident, startedAt string, resolvedAt, acke
 func (s *Store) GetIncident(id string) (*models.IncidentListItem, string, error) {
 	row := s.db.QueryRow(`
 		SELECT i.id, i.monitor_id, i.type, i.message, i.started_at, i.resolved_at,
-			i.acknowledged_at, i.acknowledged_by,
+			i.acknowledged_at, i.acknowledged_by, i.details,
 			COALESCE(m.name, pt.name, h.name, h.hostname, '') AS monitor_name,
 			COALESCE(m.tenant_id, pt.tenant_id, h.tenant_id, '') AS tenant_id
 		FROM incidents i
@@ -114,11 +150,11 @@ func (s *Store) GetIncident(id string) (*models.IncidentListItem, string, error)
 	var item models.IncidentListItem
 	var incType string
 	var startedAt string
-	var resolvedAt, ackedAt, ackedBy sql.NullString
+	var resolvedAt, ackedAt, ackedBy, details sql.NullString
 	var tenantID string
 	err := row.Scan(
 		&item.ID, &item.MonitorID, &incType, &item.Message, &startedAt, &resolvedAt,
-		&ackedAt, &ackedBy, &item.MonitorName, &tenantID,
+		&ackedAt, &ackedBy, &details, &item.MonitorName, &tenantID,
 	)
 	if err == sql.ErrNoRows {
 		return nil, "", nil
@@ -127,7 +163,12 @@ func (s *Store) GetIncident(id string) (*models.IncidentListItem, string, error)
 		return nil, "", err
 	}
 	item.Type = models.IncidentType(incType)
+	item.Message = models.StripHTTPErrorSourceSuffix(item.Message)
 	applyIncidentTimes(&item.Incident, startedAt, resolvedAt, ackedAt, ackedBy)
+	if details.Valid {
+		item.Details = details.String
+		item.ErrorPage = decodeIncidentErrorPage(details.String)
+	}
 	return &item, tenantID, nil
 }
 
@@ -241,6 +282,7 @@ func (s *Store) QueryIncidents(q IncidentQuery) ([]models.IncidentListItem, erro
 			return nil, err
 		}
 		item.Type = models.IncidentType(incType)
+		item.Message = models.StripHTTPErrorSourceSuffix(item.Message)
 		applyIncidentTimes(&item.Incident, startedAt, resolvedAt, ackedAt, ackedBy)
 		out = append(out, item)
 	}
@@ -322,4 +364,19 @@ func (s *Store) GetLastSlowAlertAt(monitorID string) (*time.Time, error) {
 		return nil, err
 	}
 	return &t, nil
+}
+
+// PruneOldIncidentCaptures drops captured error-page HTML after the retention
+// window. Incident rows stay for SLA; only resolved captures are removed.
+func (s *Store) PruneOldIncidentCaptures(before time.Time) (int64, error) {
+	res, err := s.db.Exec(`
+		UPDATE incidents SET details = NULL
+		WHERE details IS NOT NULL AND TRIM(details) != ''
+			AND resolved_at IS NOT NULL AND resolved_at < ?`,
+		formatTime(before),
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }

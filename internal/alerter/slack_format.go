@@ -65,20 +65,32 @@ func buildSlackPayload(meta AlertMeta) ([]byte, error) {
 		},
 	}
 	if meta.DashboardURL != "" {
-		blocks = append(blocks, map[string]any{
-			"type": "actions",
-			"elements": []map[string]any{
-				{
-					"type": "button",
-					"text": map[string]any{
-						"type":  "plain_text",
-						"text":  "Open in Sentinel →",
-						"emoji": true,
-					},
-					"url":   meta.DashboardURL,
-					"style": "primary",
+		elements := []map[string]any{
+			{
+				"type": "button",
+				"text": map[string]any{
+					"type":  "plain_text",
+					"text":  "Open in Sentinel →",
+					"emoji": true,
 				},
+				"url":   meta.DashboardURL,
+				"style": "primary",
 			},
+		}
+		if meta.ErrorPageURL != "" {
+			elements = append(elements, map[string]any{
+				"type": "button",
+				"text": map[string]any{
+					"type":  "plain_text",
+					"text":  "View captured page",
+					"emoji": true,
+				},
+				"url": meta.ErrorPageURL,
+			})
+		}
+		blocks = append(blocks, map[string]any{
+			"type":     "actions",
+			"elements": elements,
 		})
 	}
 

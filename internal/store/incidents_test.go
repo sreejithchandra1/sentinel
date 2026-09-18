@@ -76,3 +76,92 @@ func TestAcknowledgeIncident(t *testing.T) {
 		t.Fatalf("list: %+v", listed)
 	}
 }
+
+func TestPruneOldIncidentCaptures(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	m := &models.Monitor{Name: "shop", URL: "https://shop.example", Enabled: true}
+	if err := st.CreateMonitor(m); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC)
+	page := &models.HTTPErrorPage{
+		StatusCode: 503,
+		BodyHTML:   "<html>maintenance</html>",
+		PageURL:    "https://shop.example/",
+	}
+
+	oldResolvedAt := now.AddDate(0, 0, -40)
+	oldResolved := &models.Incident{
+		MonitorID:  m.ID,
+		Type:       models.IncidentDown,
+		Message:    "expected status 200, got 503",
+		StartedAt:  oldResolvedAt.Add(-time.Hour),
+		ResolvedAt: &oldResolvedAt,
+		ErrorPage:  page,
+	}
+	if err := st.CreateIncident(oldResolved); err != nil {
+		t.Fatal(err)
+	}
+
+	recentResolvedAt := now.AddDate(0, 0, -2)
+	recentResolved := &models.Incident{
+		MonitorID:  m.ID,
+		Type:       models.IncidentDown,
+		Message:    "expected status 200, got 503",
+		StartedAt:  recentResolvedAt.Add(-time.Hour),
+		ResolvedAt: &recentResolvedAt,
+		ErrorPage:  page,
+	}
+	if err := st.CreateIncident(recentResolved); err != nil {
+		t.Fatal(err)
+	}
+
+	oldOpen := &models.Incident{
+		MonitorID: m.ID,
+		Type:      models.IncidentDown,
+		Message:   "expected status 200, got 503",
+		StartedAt: now.AddDate(0, 0, -40),
+		ErrorPage: page,
+	}
+	if err := st.CreateIncident(oldOpen); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := st.PruneOldIncidentCaptures(now.AddDate(0, 0, -30))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("pruned=%d want 1", n)
+	}
+
+	got, _, err := st.GetIncident(oldResolved.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ErrorPage != nil {
+		t.Fatalf("old resolved capture should be gone: %+v", got.ErrorPage)
+	}
+
+	got, _, err = st.GetIncident(recentResolved.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ErrorPage == nil || got.ErrorPage.BodyHTML == "" {
+		t.Fatal("recent resolved capture should be kept")
+	}
+
+	got, _, err = st.GetIncident(oldOpen.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ErrorPage == nil || got.ErrorPage.BodyHTML == "" {
+		t.Fatal("open incident capture should be kept")
+	}
+}

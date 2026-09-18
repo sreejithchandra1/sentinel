@@ -148,6 +148,8 @@ func (c *Checker) probeHTTP(ctx context.Context, m *models.Monitor) *models.Chec
 	result.StatusCode = &code
 
 	if !statusMatches(m, code) {
+		bodyStr, _, _ := readBodyForKeywords(resp.Body, m, errorPageBodyLimit)
+		attachHTTPErrorPage(result, m.URL, resp.Header, bodyStr)
 		if hasHTTPBasicAuth(m) && code == http.StatusUnauthorized {
 			result.Error = "HTTP basic authentication failed (401 Unauthorized)"
 			return result
@@ -158,6 +160,7 @@ func (c *Checker) probeHTTP(ctx context.Context, m *models.Monitor) *models.Chec
 
 	bodyStr, forbiddenHit, err := readBodyForKeywords(resp.Body, m, 1<<20)
 	if forbiddenHit {
+		attachHTTPErrorPage(result, m.URL, resp.Header, bodyStr)
 		result.Error = fmt.Sprintf("reported down because keyword matched (must not exist): %q", m.KeywordMustNotExist)
 		return result
 	}
@@ -178,6 +181,7 @@ func (c *Checker) probeHTTP(ctx context.Context, m *models.Monitor) *models.Chec
 	}
 
 	if failed := applyKeywordChecks(result, m, bodyStr); failed {
+		attachHTTPErrorPage(result, m.URL, resp.Header, bodyStr)
 		return result
 	}
 

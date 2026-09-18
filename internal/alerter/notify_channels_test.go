@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -192,5 +193,62 @@ func TestNotifyMonitor_TenantAlsoFiresPlatformSlack(t *testing.T) {
 	}
 	if platformHits.Load() != 2 {
 		t.Fatalf("platformHits=%d want 2", platformHits.Load())
+	}
+}
+
+func TestNotifyMonitorMeta_WebhookIncludesErrorPageURL(t *testing.T) {
+	var body atomic.Value
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		body.Store(string(b))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	st, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	if err := st.SaveWebhooks([]models.WebhookConfig{{
+		URL: srv.URL, Enabled: true, Events: []string{"all"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	a := New(st, models.SMTPConfig{Enabled: false}, models.SMTPConfig{}, "http://localhost")
+	m := &models.Monitor{
+		ID: "m1", Name: "Shop", URL: "https://shop.example", Type: models.MonitorHTTP,
+		NotifyEmail: false, NotifySlack: false, NotifyWebhooks: true,
+	}
+	pageURL := "http://localhost/api/incidents/abc/error-page?token=secret"
+	if err := a.NotifyMonitorMeta(m, AlertMeta{
+		Event:        "DOWN",
+		Message:      "expected status 200, got 503",
+		ErrorPageURL: pageURL,
+		IncidentID:   "abc",
+		EventAt:      time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	var got string
+	for time.Now().Before(deadline) {
+		if v, ok := body.Load().(string); ok && v != "" {
+			got = v
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if got == "" {
+		t.Fatal("webhook was not called")
+	}
+	if !strings.Contains(got, pageURL) {
+		t.Fatalf("missing error_page_url: %s", got)
+	}
+	if strings.Contains(got, "error_source") {
+		t.Fatalf("webhook should not guess error source: %s", got)
 	}
 }
