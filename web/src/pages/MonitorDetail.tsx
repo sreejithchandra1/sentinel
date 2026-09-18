@@ -21,6 +21,7 @@ import { useAuth } from '../context/AuthContext'
 import { chartGridStroke, chartTick, chartTimeTooltipLabel, chartTimeXAxis, chartTooltipLabel, chartTooltipStyle } from '../chartTheme'
 import { colors, fonts } from '../theme'
 import { formatDuration, incidentDurationSeconds } from '../utils/duration'
+import { displayIncidentMessage } from '../utils/incidentMessage'
 import { DEFAULT_CHART_RANGE, emptyChartMessage, formatChartTick, statsQuery, type ChartRange, type ChartTimeZone } from '../utils/period'
 import { useAdaptivePoll } from '../utils/poll'
 
@@ -345,7 +346,7 @@ function SidePanel({ monitor, incidents, onCheckDue }: {
           <>
             <Row label="Type" value={lastIncident.type} />
             <Row label="When" value={new Date(lastIncident.started_at).toLocaleString()} />
-            <Row label="Message" value={lastIncident.message || '—'} />
+            <Row label="Message" value={displayIncidentMessage(lastIncident.message) || '—'} />
             <Row label="Status" value={incidentStatusLabel(lastIncident)} />
             <div style={{ paddingTop: 10 }}>
               <Link to={`/incidents/${lastIncident.id}`} style={{ color: colors.brand, fontWeight: 600, fontSize: 14, textDecoration: 'none' }}>
@@ -443,7 +444,7 @@ function IncidentsTable({ monitorId }: { monitorId: string }) {
   const sortValue = useCallback((inc: Incident, key: string) => {
     if (key === 'started') return inc.started_at
     if (key === 'type') return inc.type
-    if (key === 'message') return inc.message || ''
+    if (key === 'message') return displayIncidentMessage(inc.message)
     if (key === 'status') {
       if (inc.resolved_at) return 'resolved'
       if (inc.acknowledged_at) return 'acknowledged'
@@ -545,7 +546,7 @@ function IncidentsTable({ monitorId }: { monitorId: string }) {
                     </Link>
                   </td>
                   <td style={{ color: colors.textMuted }}>
-                    {inc.message || '—'}
+                    {displayIncidentMessage(inc.message) || '—'}
                   </td>
                   <td className="num">{formatDuration(incidentDurationSeconds(inc.started_at, inc.resolved_at))}</td>
                   <td>

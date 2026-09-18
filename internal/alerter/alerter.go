@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/smtp"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -105,6 +106,13 @@ func (a *Alerter) liveDashboardURL() string {
 	return base
 }
 
+func (a *Alerter) incidentErrorPageURL(inc *models.Incident) string {
+	if inc == nil || inc.ErrorPage == nil || inc.ErrorPage.ViewToken == "" || inc.ID == "" {
+		return ""
+	}
+	return a.liveDashboardURL() + "/api/incidents/" + inc.ID + "/error-page?token=" + url.QueryEscape(inc.ErrorPage.ViewToken)
+}
+
 func (a *Alerter) refreshSMTP() {
 	if a.store == nil {
 		return
@@ -167,16 +175,18 @@ func (a *Alerter) HandleResult(m *models.Monitor, result *models.CheckResult) er
 			Type:      models.IncidentDown,
 			Message:   result.Error,
 			StartedAt: result.CheckedAt,
+			ErrorPage: result.ErrorPage.Clone(),
 		}
 		if err := a.store.CreateIncident(inc); err != nil {
 			return err
 		}
 		return a.notifyMonitorAlert(m, AlertMeta{
-			Event:      "DOWN",
-			Message:    result.Error,
-			ResponseMs: result.ResponseTimeMs,
-			IncidentID: inc.ID,
-			EventAt:    result.CheckedAt,
+			Event:        "DOWN",
+			Message:      result.Error,
+			ResponseMs:   result.ResponseTimeMs,
+			IncidentID:   inc.ID,
+			EventAt:      result.CheckedAt,
+			ErrorPageURL: a.incidentErrorPageURL(inc),
 		})
 	}
 
@@ -652,6 +662,7 @@ var emailTmpl = template.Must(template.New("email").Parse(`<!DOCTYPE html>
                       </table>
                       <div style="margin-top:20px;">
                         <a href="{{.DashboardURL}}" style="display:inline-block;background:#2B7A78;color:#ffffff;padding:10px 16px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;">Open in Sentinel →</a>
+                        {{if .ErrorPageURL}}<a href="{{.ErrorPageURL}}" style="display:inline-block;margin-left:10px;background:#243041;color:#ffffff;padding:10px 16px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;">View captured page →</a>{{end}}
                       </div>
                     </div>
                   </td>
@@ -676,6 +687,7 @@ type emailDNSSection struct {
 
 type emailData struct {
 	Title, Name, URL, Message, DashboardURL      string
+	ErrorPageURL                                 string
 	Color, Field1Label, Field1Value, Field1Color string
 	Response, TimeLabel, TimeValue, Incident     string
 	ShowMessage                                  bool
@@ -719,6 +731,7 @@ func (a *Alerter) renderAlertEmail(meta AlertMeta) string {
 		HasServices:  len(svcRows) > 0,
 		ServiceRows:  svcRows,
 		DashboardURL: meta.DashboardURL,
+		ErrorPageURL: meta.ErrorPageURL,
 		Color:        meta.Color(),
 		Field1Label:  field1Label,
 		Field1Value:  field1Value,

@@ -29,6 +29,8 @@ type AlertMeta struct {
 	RecoveredLabel string
 	// Severity is "warning" or "critical" for host gauge alerts. Empty means infer from Message.
 	Severity string
+	// ErrorPageURL is a tokenized link to the captured HTTP error page (DOWN only).
+	ErrorPageURL string
 }
 
 func (m AlertMeta) Title() string {

@@ -44,7 +44,7 @@ export default function SettingsServer() {
                 value={cfg.retention_days}
                 onChange={e => setCfg(c => ({ ...c, retention_days: Math.max(30, +e.target.value || 30) }))}
               />
-              <span style={styles.hint}>Minimum 30 days — check history is kept for this period.</span>
+              <span style={styles.hint}>Minimum 30 days — check history, captured error pages, performance samples, email log, and host metrics are kept for this period.</span>
             </label>
             <label className="field">
               <span className="field-label">Workers</span>

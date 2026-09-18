@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -110,5 +111,86 @@ func TestGetAndAcknowledgeIncident(t *testing.T) {
 	missing := authedReq(t, h, http.MethodGet, "/api/incidents/does-not-exist", adminSess)
 	if missing.Code != http.StatusNotFound {
 		t.Fatalf("missing GET status=%d", missing.Code)
+	}
+}
+
+func TestIncidentErrorPageToken(t *testing.T) {
+	srv, st, admin := newTestMFAServer(t)
+	h := srv.Handler()
+	adminSess := withSession(t, st, admin.ID)
+
+	m := &models.Monitor{Name: "shop", URL: "https://shop.example", Enabled: true}
+	if err := st.CreateMonitor(m); err != nil {
+		t.Fatal(err)
+	}
+	inc := &models.Incident{
+		MonitorID: m.ID,
+		Type:      models.IncidentDown,
+		Message:   "expected status 200, got 503 (Shopware maintenance)",
+		StartedAt: time.Now().UTC(),
+		ErrorPage: &models.HTTPErrorPage{
+			StatusCode:  503,
+			Source:      models.HTTPErrorSourceShopware,
+			SourceLabel: "Shopware maintenance",
+			BodyHTML:    "<html><head><title>Maintenance</title></head><body>Shopware down</body></html>",
+			PageURL:     "https://shop.example/foo",
+			Headers:     map[string]string{"Server": "nginx"},
+		},
+	}
+	if err := st.CreateIncident(inc); err != nil {
+		t.Fatal(err)
+	}
+	if inc.ErrorPage.ViewToken == "" {
+		t.Fatal("expected view token")
+	}
+
+	unauth := httptest.NewRequest(http.MethodGet, "/api/incidents/"+inc.ID+"/error-page?token="+inc.ErrorPage.ViewToken, nil)
+	okRec := httptest.NewRecorder()
+	h.ServeHTTP(okRec, unauth)
+	if okRec.Code != http.StatusOK {
+		t.Fatalf("valid token status=%d body=%s", okRec.Code, okRec.Body.String())
+	}
+	if ct := okRec.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
+		t.Fatalf("content-type=%s", ct)
+	}
+	if !strings.Contains(okRec.Body.String(), "Shopware down") {
+		t.Fatalf("body=%s", okRec.Body.String())
+	}
+	if !strings.Contains(okRec.Body.String(), `<base href="https://shop.example/`) {
+		t.Fatalf("missing base href: %s", okRec.Body.String())
+	}
+	if okRec.Header().Get("Content-Security-Policy") == "" {
+		t.Fatal("missing CSP")
+	}
+
+	bad := httptest.NewRequest(http.MethodGet, "/api/incidents/"+inc.ID+"/error-page?token=nope", nil)
+	badRec := httptest.NewRecorder()
+	h.ServeHTTP(badRec, bad)
+	if badRec.Code != http.StatusNotFound {
+		t.Fatalf("bad token status=%d", badRec.Code)
+	}
+
+	get := authedReq(t, h, http.MethodGet, "/api/incidents/"+inc.ID, adminSess)
+	if get.Code != http.StatusOK {
+		t.Fatalf("GET status=%d body=%s", get.Code, get.Body.String())
+	}
+	var item models.IncidentListItem
+	if err := json.Unmarshal(get.Body.Bytes(), &item); err != nil {
+		t.Fatal(err)
+	}
+	if item.ErrorPage == nil || item.ErrorPage.BodyHTML == "" {
+		t.Fatalf("error_page=%+v", item.ErrorPage)
+	}
+	if item.ErrorPage.ViewToken != "" {
+		t.Fatal("view token must not be returned on authenticated GET")
+	}
+	if item.ErrorPage.ViewURL == "" || !strings.Contains(item.ErrorPage.ViewURL, "error-page?token=") {
+		t.Fatalf("view_url=%q", item.ErrorPage.ViewURL)
+	}
+	if strings.Contains(item.Message, "nginx error page") || strings.Contains(item.Message, "Shopware maintenance") {
+		t.Fatalf("message should not include guessed source: %q", item.Message)
+	}
+	if item.Message != "expected status 200, got 503" {
+		t.Fatalf("message=%q", item.Message)
 	}
 }

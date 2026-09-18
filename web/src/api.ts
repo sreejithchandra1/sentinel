@@ -343,6 +343,17 @@ export interface PublicStatusResponse {
   monitors: PublicMonitorStatus[]
 }
 
+export interface HTTPErrorPage {
+  status_code: number
+  headers?: Record<string, string>
+  source?: string
+  source_label?: string
+  excerpt?: string
+  body_html?: string
+  page_url?: string
+  view_url?: string
+}
+
 export interface Incident {
   id: string
   monitor_id: string
@@ -353,6 +364,7 @@ export interface Incident {
   resolved_at?: string
   acknowledged_at?: string
   acknowledged_by?: string
+  error_page?: HTTPErrorPage
 }
 
 export type HostStatus = 'pending' | 'online' | 'offline'

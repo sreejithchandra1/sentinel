@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Incident } from '../api'
 import { colors, fonts } from '../theme'
+import { displayIncidentMessage } from '../utils/incidentMessage'
 import Panel from './Panel'
 
 function timeAgo(iso: string): string {
@@ -45,9 +46,9 @@ export default function DashboardRail({
             <Link to={`/incidents/${last.id}`} style={{ ...styles.lastTitle, ...styles.titleLink }}>
               {incidentTitle(last)}
             </Link>
-            {last.message && (
-              <div style={styles.lastMsg}>{last.message}</div>
-            )}
+            {displayIncidentMessage(last.message) ? (
+              <div style={styles.lastMsg}>{displayIncidentMessage(last.message)}</div>
+            ) : null}
             <div style={styles.lastMeta}>
               {last.resolved_at ? 'Resolved' : last.acknowledged_at ? 'Acknowledged' : 'Open'}
             </div>

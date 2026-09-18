@@ -292,6 +292,12 @@ func (sch *Scheduler) prune() {
 	} else if hn > 0 {
 		log.Printf("scheduler: pruned %d old host samples", hn)
 	}
+	cn, err := sch.store.PruneOldIncidentCaptures(before)
+	if err != nil {
+		log.Printf("scheduler: prune incident captures: %v", err)
+	} else if cn > 0 {
+		log.Printf("scheduler: pruned %d old incident error-page captures", cn)
+	}
 }
 
 func monitorKey(id string) string { return "m:" + id }

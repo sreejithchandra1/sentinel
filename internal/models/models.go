@@ -168,17 +168,23 @@ type CheckResult struct {
 	Error          string        `json:"error,omitempty"`
 	Details        string        `json:"details,omitempty"`
 	CheckedAt      time.Time     `json:"checked_at"`
+	// ErrorPage is the full captured error response. It is not persisted on
+	// check_results (only a compact summary goes in Details); the alerter copies
+	// it onto the incident when a DOWN alert fires.
+	ErrorPage *HTTPErrorPage `json:"-"`
 }
 
 type Incident struct {
-	ID             string       `json:"id"`
-	MonitorID      string       `json:"monitor_id"`
-	Type           IncidentType `json:"type"`
-	Message        string       `json:"message,omitempty"`
-	StartedAt      time.Time    `json:"started_at"`
-	ResolvedAt     *time.Time   `json:"resolved_at,omitempty"`
-	AcknowledgedAt *time.Time   `json:"acknowledged_at,omitempty"`
-	AcknowledgedBy string       `json:"acknowledged_by,omitempty"`
+	ID             string         `json:"id"`
+	MonitorID      string         `json:"monitor_id"`
+	Type           IncidentType   `json:"type"`
+	Message        string         `json:"message,omitempty"`
+	StartedAt      time.Time      `json:"started_at"`
+	ResolvedAt     *time.Time     `json:"resolved_at,omitempty"`
+	AcknowledgedAt *time.Time     `json:"acknowledged_at,omitempty"`
+	AcknowledgedBy string         `json:"acknowledged_by,omitempty"`
+	Details        string         `json:"-"`
+	ErrorPage      *HTTPErrorPage `json:"error_page,omitempty"`
 }
 
 type UserRole string
