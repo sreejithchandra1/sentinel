@@ -11,26 +11,25 @@ import (
 	"github.com/sentinel-monitoring/sentinel/internal/models"
 )
 
-// Allow styles/images from the origin (via <base href>) and scripts so Nuxt /
-// Shopware client shells can hydrate from the embedded capture payload.
-// default-src stays locked down; the opaque preview iframe also omits
-// allow-same-origin so scripts cannot touch the Sentinel session.
-const errorPageCSP = "default-src 'none'; img-src * data: blob:; media-src * data: blob:; style-src 'unsafe-inline' *; font-src * data:; script-src 'unsafe-inline' 'unsafe-eval' https: http: blob:; connect-src https: http: ws: wss:; worker-src blob:; base-uri 'self' https: http:"
+// Captured third-party HTML must never execute as text/html on the Sentinel
+// origin (stored XSS). Serve as plain text only; the dashboard renders a
+// sandboxed srcdoc preview from the authenticated incident JSON.
+const errorPageCSP = "default-src 'none'; sandbox; base-uri 'none'; form-action 'none'"
 
 func (s *Server) exposeErrorPageViewURL(item *models.IncidentListItem) {
 	if item == nil || item.ErrorPage == nil {
 		return
 	}
-	token := item.ErrorPage.ViewToken
-	if token != "" {
-		item.ErrorPage.ViewURL = s.incidentErrorPageURL(item.ID, token)
+	// Point operators at the incident detail page (sandboxed preview), not a
+	// top-level HTML capture URL.
+	if item.ID != "" {
+		item.ErrorPage.ViewURL = s.dashboardBaseURL() + "/incidents/" + url.PathEscape(item.ID)
 	}
 	item.ErrorPage.ViewToken = ""
 }
 
 func (s *Server) incidentErrorPageURL(id, token string) string {
-	// Use live Settings → Server dashboard URL (not startup config.yaml alone),
-	// same as password-reset and alert links.
+	// Legacy tokenized capture URL — still served as text/plain for tooling.
 	base := s.dashboardBaseURL()
 	return base + "/api/incidents/" + id + "/error-page?token=" + url.QueryEscape(token)
 }
@@ -57,15 +56,15 @@ func (s *Server) handleIncidentErrorPage(w http.ResponseWriter, r *http.Request)
 	page := item.ErrorPage
 	body := strings.TrimSpace(page.BodyHTML)
 	if body == "" {
-		body = fallbackErrorPageHTML(page)
+		body = fallbackErrorPagePlain(page)
 	}
-	body = injectBaseHref(body, page.PageURL)
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// text/plain + noscript CSP: captured HTML must not execute on this origin.
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Content-Security-Policy", errorPageCSP)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+	w.Header().Set("X-Frame-Options", "DENY")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(body))
 }
@@ -100,31 +99,24 @@ func injectBaseHref(htmlBody, pageURL string) string {
 	return "<head>" + base + "</head>" + htmlBody
 }
 
-func fallbackErrorPageHTML(page *models.HTTPErrorPage) string {
+func fallbackErrorPagePlain(page *models.HTTPErrorPage) string {
 	if page == nil {
-		return "<!DOCTYPE html><title>Error page</title><p>No response body was captured.</p>"
+		return "No response body was captured."
 	}
 	var b strings.Builder
-	b.WriteString("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>HTTP ")
-	b.WriteString(html.EscapeString(fmt.Sprintf("%d", page.StatusCode)))
-	b.WriteString("</title></head><body><h1>HTTP ")
-	b.WriteString(html.EscapeString(fmt.Sprintf("%d", page.StatusCode)))
-	b.WriteString("</h1>")
+	b.WriteString(fmt.Sprintf("HTTP %d\n", page.StatusCode))
 	if len(page.Headers) > 0 {
-		b.WriteString("<pre>")
+		b.WriteString("\n")
 		for k, v := range page.Headers {
-			b.WriteString(html.EscapeString(k))
+			b.WriteString(k)
 			b.WriteString(": ")
-			b.WriteString(html.EscapeString(v))
+			b.WriteString(v)
 			b.WriteString("\n")
 		}
-		b.WriteString("</pre>")
 	}
 	if page.Excerpt != "" {
-		b.WriteString("<p>")
-		b.WriteString(html.EscapeString(page.Excerpt))
-		b.WriteString("</p>")
+		b.WriteString("\n")
+		b.WriteString(page.Excerpt)
 	}
-	b.WriteString("</body></html>")
 	return b.String()
 }

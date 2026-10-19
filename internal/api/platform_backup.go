@@ -230,16 +230,49 @@ func (s *Server) importPlatformBackup(user *models.User, file platformBackupFile
 	importHosts(s, user, file.Hosts, mode, &result.Hosts)
 	importMaintenance(s, user, file.MaintenanceWindows, mode, &result.MaintenanceWindows)
 
-	if file.Settings != nil && (isPlatformAdmin(user) || isCustomerAdmin(user)) {
-		if isCustomerAdmin(user) || file.ScopeTenantID != "" || isPlatformAdmin(user) {
-			if err := s.store.ImportPlatformSettings(file.Settings, mode == "overwrite"); err != nil {
-				result.Customers.Failed = append(result.Customers.Failed, monitorBackupInvalid{Name: "settings", Error: err.Error()})
-			} else {
-				result.SettingsApplied = true
-			}
+	if file.Settings != nil {
+		if err := s.applyImportedSettings(user, file.Settings, mode == "overwrite", &result); err != nil {
+			result.Customers.Failed = append(result.Customers.Failed, monitorBackupInvalid{Name: "settings", Error: err.Error()})
 		}
 	}
 	return result
+}
+
+// applyImportedSettings enforces platform-admin-only writes for global settings (F-02).
+// Customer admins may only restore their own Slack config; tenant_id is forced to the actor.
+func (s *Server) applyImportedSettings(user *models.User, settings *models.PlatformSettingsBackup, overwrite bool, result *platformBackupImportResult) error {
+	if settings == nil {
+		return nil
+	}
+	if isPlatformAdmin(user) {
+		if err := s.store.ImportPlatformSettings(settings, overwrite); err != nil {
+			return err
+		}
+		result.SettingsApplied = true
+		return nil
+	}
+	if !isCustomerAdmin(user) {
+		return nil
+	}
+	tenantID := strings.TrimSpace(user.TenantID)
+	if tenantID == "" || len(settings.Slack) == 0 {
+		// Global org/SMTP/status/server/webhooks are never applied for tenant admins.
+		return nil
+	}
+	for _, sl := range settings.Slack {
+		cfg := sl.Config
+		cfg.WebhookURL = strings.TrimSpace(cfg.WebhookURL)
+		if cfg.WebhookURL != "" {
+			if err := safehost.ValidateHTTPURL(cfg.WebhookURL); err != nil {
+				return fmt.Errorf("slack webhook: %w", err)
+			}
+		}
+		if err := s.store.SaveSlackConfig(tenantID, cfg); err != nil {
+			return err
+		}
+		result.SettingsApplied = true
+	}
+	return nil
 }
 
 func importCustomers(s *Server, user *models.User, customers []models.Customer, mode string, result *sectionImportResult) {
@@ -667,7 +700,11 @@ func (s *Server) previewPlatformBackup(user *models.User, file platformBackupFil
 		return out, nil
 	}
 	out := emptyPlatformBackupPreview(platformBackupFormat)
-	out.SettingsIncluded = file.Settings != nil
+	out.SettingsIncluded = file.Settings != nil && isPlatformAdmin(user)
+	if file.Settings != nil && isCustomerAdmin(user) && len(file.Settings.Slack) > 0 {
+		// Tenant admins may restore only their own Slack block.
+		out.SettingsIncluded = true
+	}
 	out.Customers = previewCustomers(s, user, file.Customers, mode)
 	out.Users = previewUsers(s, user, file.Users, mode)
 	mp, err := s.buildMonitorBackupPreview(user, file.Monitors, mode)

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/sentinel-monitoring/sentinel/internal/models"
+	"github.com/sentinel-monitoring/sentinel/internal/safehost"
 )
 
 func (s *Server) slackTenantFor(r *http.Request) (tenantID string, ok bool) {
@@ -46,6 +47,12 @@ func (s *Server) handlePutSlack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cfg.WebhookURL = strings.TrimSpace(cfg.WebhookURL)
+	if cfg.WebhookURL != "" {
+		if err := safehost.ValidateHTTPURL(cfg.WebhookURL); err != nil {
+			jsonError(w, http.StatusBadRequest, "webhook URL is not allowed")
+			return
+		}
+	}
 	if cfg.Events == nil {
 		cfg.Events = []string{"all"}
 	}

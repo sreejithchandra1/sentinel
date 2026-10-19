@@ -6,14 +6,34 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"sync/atomic"
+	"testing"
 	"time"
 )
 
 // ErrBlockedTarget is returned when a host resolves to a non-public address.
 var ErrBlockedTarget = fmt.Errorf("target host is not allowed (private, loopback, or link-local)")
 
+// testAllowNonPublic lets unit tests dial loopback httptest servers.
+var testAllowNonPublic atomic.Bool
+
+// AllowNonPublicForTest temporarily permits private/loopback destinations.
+func AllowNonPublicForTest(t testing.TB) {
+	t.Helper()
+	testAllowNonPublic.Store(true)
+	t.Cleanup(func() { testAllowNonPublic.Store(false) })
+}
+
+// AllowNonPublicForPackageTests enables private dials for a package TestMain.
+func AllowNonPublicForPackageTests() {
+	testAllowNonPublic.Store(true)
+}
+
 // IsBlockedIP reports whether ip is unsuitable for outbound probes (SSRF risk).
 func IsBlockedIP(ip net.IP) bool {
+	if testAllowNonPublic.Load() {
+		return false
+	}
 	if ip == nil {
 		return true
 	}

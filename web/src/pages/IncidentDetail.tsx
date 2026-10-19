@@ -152,16 +152,6 @@ export default function IncidentDetail() {
             {incident.error_page.status_code ? (
               <Row label="Status code" value={String(incident.error_page.status_code)} />
             ) : null}
-            {incident.error_page.view_url ? (
-              <div style={styles.row}>
-                <dt style={styles.dt}>Captured page</dt>
-                <dd style={styles.dd}>
-                  <a href={incident.error_page.view_url} target="_blank" rel="noreferrer" style={styles.link}>
-                    Open captured page →
-                  </a>
-                </dd>
-              </div>
-            ) : null}
           </dl>
           {incident.error_page.headers && Object.keys(incident.error_page.headers).length > 0 && (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginTop: 8 }}>

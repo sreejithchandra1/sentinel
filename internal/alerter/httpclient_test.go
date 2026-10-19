@@ -19,4 +19,10 @@ func TestOutboundHTTPClientRequiresTLS13(t *testing.T) {
 	if transport.TLSClientConfig.MinVersion != tls.VersionTLS13 {
 		t.Fatalf("MinVersion=%d want TLS 1.3", transport.TLSClientConfig.MinVersion)
 	}
+	if transport.DialContext == nil {
+		t.Fatal("DialContext must use safehost control dial")
+	}
+	if client.CheckRedirect == nil {
+		t.Fatal("CheckRedirect must be set to block SSRF via redirects")
+	}
 }

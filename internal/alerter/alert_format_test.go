@@ -132,7 +132,7 @@ func TestBuildSlackPayloadErrorPageButton(t *testing.T) {
 		URL:          "https://shop.example/",
 		Message:      "expected status 200, got 503",
 		DashboardURL: "http://localhost/monitors/1",
-		ErrorPageURL: "http://localhost/api/incidents/abc/error-page?token=secret",
+		ErrorPageURL: "http://localhost/incidents/abc",
 		ResponseMs:   80,
 		IncidentID:   "deadbeef",
 		EventAt:      time.Date(2026, 9, 18, 6, 0, 0, 0, time.UTC),
@@ -142,11 +142,14 @@ func TestBuildSlackPayloadErrorPageButton(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(raw)
-	if !strings.Contains(s, "View captured page") {
-		t.Fatalf("missing captured page button: %s", s)
+	if !strings.Contains(s, "View incident") {
+		t.Fatalf("missing incident button: %s", s)
 	}
 	if !strings.Contains(s, meta.ErrorPageURL) {
-		t.Fatalf("missing error page url: %s", s)
+		t.Fatalf("missing incident url: %s", s)
+	}
+	if strings.Contains(s, "error-page") {
+		t.Fatalf("must not link to raw error-page HTML: %s", s)
 	}
 
 	timeout := AlertMeta{
@@ -160,8 +163,8 @@ func TestBuildSlackPayloadErrorPageButton(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(raw), "View captured page") {
-		t.Fatalf("timeout should omit captured page button: %s", raw)
+	if strings.Contains(string(raw), "View incident") {
+		t.Fatalf("timeout should omit incident capture button: %s", raw)
 	}
 }
 
@@ -173,16 +176,19 @@ func TestRenderAlertEmailErrorPageLink(t *testing.T) {
 		URL:          "https://shop.example/",
 		Message:      "expected status 200, got 503",
 		DashboardURL: "http://localhost/monitors/1",
-		ErrorPageURL: "http://localhost/api/incidents/abc/error-page?token=secret",
+		ErrorPageURL: "http://localhost/incidents/abc",
 		ResponseMs:   80,
 		IncidentID:   "deadbeef",
 		EventAt:      time.Now().UTC(),
 	})
-	if !strings.Contains(html, "View captured page") {
-		t.Fatal("missing captured page link")
+	if !strings.Contains(html, "View incident") {
+		t.Fatal("missing incident link")
 	}
-	if !strings.Contains(html, "error-page?token=secret") {
-		t.Fatalf("missing tokenized url in email: %s", html)
+	if !strings.Contains(html, "/incidents/abc") {
+		t.Fatalf("missing incident url in email: %s", html)
+	}
+	if strings.Contains(html, "error-page") {
+		t.Fatalf("must not link to raw error-page HTML: %s", html)
 	}
 
 	timeoutHTML := a.renderAlertEmail(AlertMeta{
@@ -193,8 +199,8 @@ func TestRenderAlertEmailErrorPageLink(t *testing.T) {
 		IncidentID:   "deadbeef",
 		EventAt:      time.Now().UTC(),
 	})
-	if strings.Contains(timeoutHTML, "View captured page") {
-		t.Fatal("timeout email should omit captured page link")
+	if strings.Contains(timeoutHTML, "View incident") {
+		t.Fatal("timeout email should omit incident capture link")
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/sentinel-monitoring/sentinel/internal/config"
 	"github.com/sentinel-monitoring/sentinel/internal/models"
+	"github.com/sentinel-monitoring/sentinel/internal/safehost"
 	"github.com/sentinel-monitoring/sentinel/internal/store"
 )
 
@@ -162,6 +163,16 @@ func (s *Server) handlePutWebhooks(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&hooks); err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid request")
 		return
+	}
+	for i := range hooks {
+		hooks[i].URL = strings.TrimSpace(hooks[i].URL)
+		if hooks[i].URL == "" {
+			continue
+		}
+		if err := safehost.ValidateHTTPURL(hooks[i].URL); err != nil {
+			jsonError(w, http.StatusBadRequest, "webhook URL is not allowed")
+			return
+		}
 	}
 	if err := s.store.SaveWebhooks(hooks); err != nil {
 		jsonInternal(w, err)
