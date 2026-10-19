@@ -150,14 +150,11 @@ func TestIncidentErrorPageToken(t *testing.T) {
 	if okRec.Code != http.StatusOK {
 		t.Fatalf("valid token status=%d body=%s", okRec.Code, okRec.Body.String())
 	}
-	if ct := okRec.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
-		t.Fatalf("content-type=%s", ct)
+	if ct := okRec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
+		t.Fatalf("content-type=%s want text/plain (no executable HTML)", ct)
 	}
 	if !strings.Contains(okRec.Body.String(), "Shopware down") {
 		t.Fatalf("body=%s", okRec.Body.String())
-	}
-	if !strings.Contains(okRec.Body.String(), `<base href="https://shop.example/`) {
-		t.Fatalf("missing base href: %s", okRec.Body.String())
 	}
 	if okRec.Header().Get("Content-Security-Policy") == "" {
 		t.Fatal("missing CSP")
@@ -184,8 +181,11 @@ func TestIncidentErrorPageToken(t *testing.T) {
 	if item.ErrorPage.ViewToken != "" {
 		t.Fatal("view token must not be returned on authenticated GET")
 	}
-	if item.ErrorPage.ViewURL == "" || !strings.Contains(item.ErrorPage.ViewURL, "error-page?token=") {
+	if item.ErrorPage.ViewURL == "" || !strings.Contains(item.ErrorPage.ViewURL, "/incidents/"+inc.ID) {
 		t.Fatalf("view_url=%q", item.ErrorPage.ViewURL)
+	}
+	if strings.Contains(item.ErrorPage.ViewURL, "error-page") {
+		t.Fatalf("view_url must not point at raw HTML capture: %q", item.ErrorPage.ViewURL)
 	}
 	if strings.Contains(item.Message, "nginx error page") || strings.Contains(item.Message, "Shopware maintenance") {
 		t.Fatalf("message should not include guessed source: %q", item.Message)
@@ -238,9 +238,9 @@ func TestIncidentErrorPageViewURLUsesDashboardSettings(t *testing.T) {
 	if item.ErrorPage == nil {
 		t.Fatal("expected error_page")
 	}
-	wantPrefix := "https://monitor.2hatslogic.com/api/incidents/" + inc.ID + "/error-page?token="
-	if !strings.HasPrefix(item.ErrorPage.ViewURL, wantPrefix) {
-		t.Fatalf("view_url=%q want prefix %q", item.ErrorPage.ViewURL, wantPrefix)
+	want := "https://monitor.2hatslogic.com/incidents/" + inc.ID
+	if item.ErrorPage.ViewURL != want {
+		t.Fatalf("view_url=%q want %q", item.ErrorPage.ViewURL, want)
 	}
 	if strings.Contains(item.ErrorPage.ViewURL, "localhost") {
 		t.Fatalf("view_url still uses localhost: %q", item.ErrorPage.ViewURL)

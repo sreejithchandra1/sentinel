@@ -33,6 +33,11 @@ func (a *Alerter) fireWebhooks(event string, payload map[string]any) {
 		if !webhookMatchesEvent(hook.Events, event) {
 			continue
 		}
+		url := strings.TrimSpace(hook.URL)
+		if err := validateOutboundWebhookURL(url); err != nil {
+			log.Printf("webhook: blocked url: %v", err)
+			continue
+		}
 		go func(url string) {
 			req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
 			if err != nil {
@@ -45,7 +50,7 @@ func (a *Alerter) fireWebhooks(event string, payload map[string]any) {
 				return
 			}
 			resp.Body.Close()
-		}(hook.URL)
+		}(url)
 	}
 }
 

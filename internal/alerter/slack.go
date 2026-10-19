@@ -34,6 +34,10 @@ func (a *Alerter) fireSlack(tenantID string, meta AlertMeta) {
 		return
 	}
 	url := strings.TrimSpace(cfg.WebhookURL)
+	if err := validateOutboundWebhookURL(url); err != nil {
+		log.Printf("slack: blocked webhook url: %v", err)
+		return
+	}
 	go func() {
 		req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
 		if err != nil {
@@ -66,6 +70,9 @@ func (a *Alerter) SendTestSlack(tenantID string) error {
 	if url == "" {
 		return fmt.Errorf("Slack webhook URL is not configured")
 	}
+	if err := validateOutboundWebhookURL(url); err != nil {
+		return err
+	}
 	meta := AlertMeta{
 		Event:        "TEST",
 		Name:         "Sentinel",
@@ -80,17 +87,18 @@ func (a *Alerter) SendTestSlack(tenantID string) error {
 	}
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return fmt.Errorf("Slack webhook test failed")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	client := outboundHTTPClient(10 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		// Do not return dial/status oracles (SSRF reconnaissance).
+		return fmt.Errorf("Slack webhook test failed")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("Slack returned status %d", resp.StatusCode)
+		return fmt.Errorf("Slack webhook test failed")
 	}
 	return nil
 }

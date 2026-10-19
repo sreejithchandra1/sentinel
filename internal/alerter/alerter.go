@@ -107,10 +107,12 @@ func (a *Alerter) liveDashboardURL() string {
 }
 
 func (a *Alerter) incidentErrorPageURL(inc *models.Incident) string {
-	if inc == nil || inc.ErrorPage == nil || inc.ErrorPage.ViewToken == "" || inc.ID == "" {
+	// Link to the incident detail page (sandboxed capture preview), never a
+	// top-level HTML capture URL that could execute third-party script.
+	if inc == nil || inc.ErrorPage == nil || inc.ID == "" {
 		return ""
 	}
-	return a.liveDashboardURL() + "/api/incidents/" + inc.ID + "/error-page?token=" + url.QueryEscape(inc.ErrorPage.ViewToken)
+	return a.liveDashboardURL() + "/incidents/" + url.PathEscape(inc.ID)
 }
 
 func (a *Alerter) refreshSMTP() {
@@ -662,7 +664,7 @@ var emailTmpl = template.Must(template.New("email").Parse(`<!DOCTYPE html>
                       </table>
                       <div style="margin-top:20px;">
                         <a href="{{.DashboardURL}}" style="display:inline-block;background:#2B7A78;color:#ffffff;padding:10px 16px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;">Open in Sentinel →</a>
-                        {{if .ErrorPageURL}}<a href="{{.ErrorPageURL}}" style="display:inline-block;margin-left:10px;background:#243041;color:#ffffff;padding:10px 16px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;">View captured page →</a>{{end}}
+                        {{if .ErrorPageURL}}<a href="{{.ErrorPageURL}}" style="display:inline-block;margin-left:10px;background:#243041;color:#ffffff;padding:10px 16px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;">View incident →</a>{{end}}
                       </div>
                     </div>
                   </td>

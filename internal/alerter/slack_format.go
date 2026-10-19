@@ -82,7 +82,7 @@ func buildSlackPayload(meta AlertMeta) ([]byte, error) {
 				"type": "button",
 				"text": map[string]any{
 					"type":  "plain_text",
-					"text":  "View captured page",
+					"text":  "View incident",
 					"emoji": true,
 				},
 				"url": meta.ErrorPageURL,
