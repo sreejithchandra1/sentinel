@@ -13,6 +13,7 @@ import MonitorForm from './MonitorForm'
 import SegmentedTabs from '../components/SegmentedTabs'
 import Sparkline from '../components/Sparkline'
 import StatusBadge, { badgeStatusFor, isPaused } from '../components/StatusBadge'
+import TablePager, { isPageSize, PageSize } from '../components/TablePager'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import CheckTypePill from '../components/CheckTypePill'
 import MonitorKindIcon, { monitorKindFor } from '../components/MonitorKindIcon'
@@ -27,6 +28,21 @@ import {
 } from '../utils/monitorSiteGroups'
 
 const SITE_EXPAND_KEY = 'sentinel-site-expand'
+const MONITOR_PAGE_SIZE_KEY = 'sentinel-monitors-page-size'
+
+type MonitorListRow =
+  | { kind: 'site'; site: Site; monitors: Monitor[] }
+  | { kind: 'standalone'; monitor: Monitor }
+
+function loadMonitorPageSize(): PageSize {
+  try {
+    const n = Number(sessionStorage.getItem(MONITOR_PAGE_SIZE_KEY))
+    if (isPageSize(n)) return n
+  } catch {
+    /* ignore */
+  }
+  return 10
+}
 
 function loadExpandedSites(): Set<string> {
   try {
@@ -100,6 +116,8 @@ export default function Monitors() {
   const [deleteMonitor, setDeleteMonitor] = useState<Monitor | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [togglingId, setTogglingId] = useState('')
+  const [pageSize, setPageSize] = useState<PageSize>(loadMonitorPageSize)
+  const [pageState, setPageState] = useState({ filterKey: '', page: 0 })
   const tableRef = useRef<HTMLTableElement>(null)
   // Site/Monitor is fluid (null); other cols stay compact under table-layout:fixed.
   const { widths, startResize, autoFit } = useColumnResize('monitors', 7, [
@@ -162,6 +180,33 @@ export default function Monitors() {
     () => groupMonitorsBySite(filtered, sitesScoped),
     [filtered, sitesScoped],
   )
+
+  const listRows = useMemo<MonitorListRow[]>(() => [
+    ...siteGroups.map(g => ({ kind: 'site' as const, site: g.site, monitors: g.monitors })),
+    ...standaloneMonitors.map(m => ({ kind: 'standalone' as const, monitor: m })),
+  ], [siteGroups, standaloneMonitors])
+
+  const filterKey = `${q}\0${statusTab}\0${tagFilter}\0${selectedCustomers.join('\0')}`
+  const page = pageState.filterKey === filterKey ? pageState.page : 0
+  const setPage = (next: number) => setPageState({ filterKey, page: next })
+  const totalPages = Math.max(1, Math.ceil(listRows.length / pageSize))
+  const safePage = Math.min(page, Math.max(0, totalPages - 1))
+  const pageRows = useMemo(
+    () => listRows.slice(safePage * pageSize, safePage * pageSize + pageSize),
+    [listRows, safePage, pageSize],
+  )
+
+  function changePageSize(size: PageSize) {
+    setPageSize(size)
+    setPage(0)
+    try {
+      sessionStorage.setItem(MONITOR_PAGE_SIZE_KEY, String(size))
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (page !== safePage) setPage(safePage)
 
   function toggleSiteExpand(siteId: string) {
     setExpandedSites(prev => {
@@ -234,9 +279,16 @@ export default function Monitors() {
   const down = active.filter(m => m.last_status === 'down').length
   const degraded = active.filter(m => m.last_status === 'degraded').length
 
+  const pageStatsKey = pageRows.flatMap(row =>
+    row.kind === 'site' ? row.monitors.map(m => m.id) : [row.monitor.id],
+  ).join(',')
+
   useEffect(() => {
     let cancelled = false
-    const ids = filtered.slice(0, 40).map(m => m.id)
+    const ids = [...new Set([
+      ...filtered.slice(0, 40).map(m => m.id),
+      ...(pageStatsKey ? pageStatsKey.split(',') : []),
+    ])]
     if (ids.length === 0) {
       setStatsMap({})
       return
@@ -254,7 +306,7 @@ export default function Monitors() {
       }
     })()
     return () => { cancelled = true }
-  }, [filtered.map(m => m.id).join(',')])
+  }, [filtered.map(m => m.id).join(','), pageStatsKey])
 
   const overallUptime = useMemo(() => {
     const vals = filtered.map(m => statsMap[m.id]?.uptime_pct).filter((v): v is number => typeof v === 'number')
@@ -395,7 +447,8 @@ export default function Monitors() {
               </div>
             </div>
           ) : (
-            <Panel padded={false} className="data-table-wrap">
+            <Panel padded={false}>
+              <div className="data-table-wrap">
               <table ref={tableRef} className="data-table data-table--monitors">
                 <ColGroup widths={widths} />
                 <thead>
@@ -410,7 +463,25 @@ export default function Monitors() {
                   </tr>
                 </thead>
                 <tbody>
-                  {siteGroups.map(({ site, monitors: children }) => {
+                  {pageRows.map(row => {
+                    if (row.kind === 'standalone') {
+                      const m = row.monitor
+                      return (
+                        <MonitorTableRow
+                          key={m.id}
+                          m={m}
+                          statsMap={statsMap}
+                          standalone
+                          label={m.name}
+                          isAdmin={!!isAdmin}
+                          togglingId={togglingId}
+                          onTogglePause={togglePause}
+                          onEdit={() => setMonitorForm(m.id)}
+                          onDelete={() => setDeleteMonitor(m)}
+                        />
+                      )
+                    }
+                    const { site, monitors: children } = row
                     const expanded = expandedSites.has(site.id)
                     const agg = aggregateSiteStatus(children)
                     const counts = healthyCheckCounts(children)
@@ -521,22 +592,18 @@ export default function Monitors() {
                       </Fragment>
                     )
                   })}
-                  {standaloneMonitors.map(m => (
-                    <MonitorTableRow
-                      key={m.id}
-                      m={m}
-                      statsMap={statsMap}
-                      standalone
-                      label={m.name}
-                      isAdmin={!!isAdmin}
-                      togglingId={togglingId}
-                      onTogglePause={togglePause}
-                      onEdit={() => setMonitorForm(m.id)}
-                      onDelete={() => setDeleteMonitor(m)}
-                    />
-                  ))}
                 </tbody>
               </table>
+              </div>
+              {listRows.length > 10 && (
+                <TablePager
+                  page={safePage}
+                  pageSize={pageSize}
+                  total={listRows.length}
+                  onPageChange={setPage}
+                  onPageSizeChange={changePageSize}
+                />
+              )}
             </Panel>
           )}
         </div>
